@@ -24,7 +24,7 @@ jobs:
     
     - name: Build Linux executable
       run: |
-        pyinstaller --onefile --windowed --name StudyPal --add-data "src:src" run.py
+        pyinstaller --onefile --windowed --name StudyPal --add-data "src:src" --hidden-import PySide6 --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets run.py
     
     - name: Upload Linux executable
       uses: actions/upload-artifact@v4
@@ -49,35 +49,10 @@ jobs:
     
     - name: Build Windows executable
       run: |
-        pyinstaller --onefile --windowed --name StudyPal --add-data "src;src" run.py
+        pyinstaller --onefile --windowed --name StudyPal --add-data "src;src" --hidden-import PySide6 --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets run.py
     
     - name: Upload Windows executable
       uses: actions/upload-artifact@v4
       with:
         name: StudyPal-Windows
         path: dist/StudyPal.exe
-
-  create-release:
-    needs: [build-linux, build-windows]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-    - name: Download Linux artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: StudyPal-Linux
-        path: linux
-    
-    - name: Download Windows artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: StudyPal-Windows
-        path: windows
-    
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          linux/StudyPal
-          windows/StudyPal.exe
-        generate_release_notes: true
