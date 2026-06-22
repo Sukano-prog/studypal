@@ -1,5 +1,5 @@
 """
-Audio player with pause/resume and speed control
+Audio player - Manual position tracking
 """
 
 import sounddevice as sd
@@ -8,86 +8,118 @@ import time
 
 class AudioPlayer:
     def __init__(self):
-        self.is_playing = False
         self.audio_data = None
         self.sample_rate = None
-        self.start_time = 0
-        self.seek_offset = 0
-        self.total_samples = 0
+        self.is_playing = False
+        self.is_paused = False
+        self.position = 0.0  # current position in seconds
+        self.duration = 0.0
+        self.speed = 1.0
+        self.start_time = 0.0
+        self.last_stream_time = 0.0
     
-    def play(self, audio_data, sample_rate):
+    def load(self, audio_data, sample_rate):
         self.audio_data = audio_data
         self.sample_rate = sample_rate
-        self.total_samples = len(audio_data)
-        self.is_playing = True
-        self.start_time = time.time()
-        self.seek_offset = 0
-        sd.play(audio_data, sample_rate)
+        self.duration = len(audio_data) / sample_rate
+        self.position = 0.0
+        self.is_playing = False
+        self.is_paused = False
     
-    def pause(self):
-        if self.is_playing:
-            current_time = self.get_current_time()
-            self.seek_offset = current_time
-            sd.stop()
-            self.is_playing = False
-    
-    def resume(self):
-        if not self.is_playing and self.audio_data is not None:
-            self.is_playing = True
-            self.start_time = time.time()
-            position = int(self.seek_offset * self.sample_rate)
-            remaining = self.audio_data[position:]
-            if len(remaining) > 0:
-                sd.play(remaining, self.sample_rate)
-    
-    def stop(self):
-        if self.is_playing:
-            sd.stop()
-            self.is_playing = False
-            self.seek_offset = 0
-    
-    def seek(self, position_seconds):
+    def play(self):
         if self.audio_data is None:
             return
         
-        max_duration = self.total_samples / self.sample_rate
-        if position_seconds < 0:
-            position_seconds = 0
-        if position_seconds > max_duration:
-            position_seconds = max_duration
+        if self.is_playing and not self.is_paused:
+            return
         
-        self.seek_offset = position_seconds
-        
-        if self.is_playing:
-            sd.stop()
-            position = int(position_seconds * self.sample_rate)
-            remaining = self.audio_data[position:]
+        if self.is_paused:
+            # Resume from paused position
+            self.is_paused = False
+            self.is_playing = True
+            start_sample = int(self.position * self.sample_rate)
+            remaining = self.audio_data[start_sample:]
             if len(remaining) > 0:
-                sd.play(remaining, self.sample_rate)
+                new_sr = int(self.sample_rate * self.speed)
+                sd.play(remaining, new_sr)
                 self.start_time = time.time()
+                self.last_stream_time = 0
+            return
+        
+        # Start fresh
+        self.is_playing = True
+        self.is_paused = False
+        self.position = 0.0
+        sd.play(self.audio_data, int(self.sample_rate * self.speed))
+        self.start_time = time.time()
+        self.last_stream_time = 0
+    
+    def pause(self):
+        if not self.is_playing or self.is_paused:
+            return
+        
+        # Calculate position manually
+        elapsed = time.time() - self.start_time
+        self.position = elapsed + self.position
+        
+        sd.stop()
+        self.is_paused = True
+        self.is_playing = False
+        print(f"Paused at: {self.position:.2f}s")
+    
+    def stop(self):
+        sd.stop()
+        self.is_playing = False
+        self.is_paused = False
+        self.position = 0.0
+    
+    def seek(self, position):
+        if self.audio_data is None:
+            return
+        
+        if position < 0:
+            position = 0
+        if position > self.duration:
+            position = self.duration
+        
+        self.position = position
+        
+        if self.is_playing and not self.is_paused:
+            sd.stop()
+            start_sample = int(position * self.sample_rate)
+            remaining = self.audio_data[start_sample:]
+            if len(remaining) > 0:
+                new_sr = int(self.sample_rate * self.speed)
+                sd.play(remaining, new_sr)
+                self.start_time = time.time()
+                self.last_stream_time = 0
     
     def set_speed(self, speed):
-        """Change playback speed in real-time"""
-        if self.is_playing and self.audio_data is not None:
-            current_time = self.get_current_time()
-            position = int(current_time * self.sample_rate)
+        if speed < 0.5:
+            speed = 0.5
+        if speed > 2.0:
+            speed = 2.0
+        
+        self.speed = speed
+        
+        if self.is_playing and not self.is_paused:
+            # Get current position
+            elapsed = time.time() - self.start_time
+            current_pos = elapsed + self.position
+            
             sd.stop()
-            remaining = self.audio_data[position:]
+            start_sample = int(current_pos * self.sample_rate)
+            remaining = self.audio_data[start_sample:]
             if len(remaining) > 0:
                 new_sr = int(self.sample_rate * speed)
                 sd.play(remaining, new_sr)
                 self.start_time = time.time()
+                self.position = current_pos
+                self.last_stream_time = 0
     
-    def get_current_time(self):
-        """Get current playback position in seconds"""
-        if not self.is_playing:
-            return self.seek_offset
-        
-        elapsed = time.time() - self.start_time
-        current = self.seek_offset + elapsed
-        
-        max_duration = self.total_samples / self.sample_rate if self.sample_rate else 0
-        if current > max_duration:
-            current = max_duration
-        
-        return current
+    def get_position(self):
+        """Get current position in seconds - manual calculation"""
+        if self.is_playing and not self.is_paused:
+            elapsed = time.time() - self.start_time
+            return elapsed + self.position
+        return self.position
