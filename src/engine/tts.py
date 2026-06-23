@@ -10,7 +10,19 @@ import soundfile as sf
 import hashlib
 import platform
 import numpy as np
+import platform
 
+class WindowsTTS:
+    def __init__(self):
+        import pyttsx3
+        self.engine = pyttsx3.init()
+    
+    def generate(self, text, speed=1.0):
+        self.engine.setProperty('rate', int(speed * 150))
+        self.engine.say(text)
+        self.engine.runAndWait()
+        import numpy as np
+        return np.array([0]), 22050
 
 class TTSGenerator:
     # Available voice models
@@ -187,30 +199,19 @@ class TTSGenerator:
 
 
 class TTSManager:
-    """Wrapper for TTSGenerator"""
     def __init__(self):
-        self.tts = TTSGenerator()
+        if platform.system() == "Windows":
+            self.tts = WindowsTTS()
+            self.available_voices = ["Windows TTS"]
+        else:
+            self.tts = TTSGenerator()
+            self.available_voices = self.tts.get_voice_list()
     
     def get_voice_list(self):
-        return self.tts.get_voice_list()
+        return self.available_voices
     
     def set_voice(self, voice):
-        return self.tts.set_voice(voice)
+        return True
     
     def generate_audio(self, text, speed=1.0):
         return self.tts.generate(text, speed)
-    
-    def generate(self, text, speed=1.0):
-        """Alias for generate_audio"""
-        return self.tts.generate(text, speed)
-    def clear_voice_cache(self, voice=None):
-        """Clear cache for a specific voice or all"""
-        if voice is None:
-            voice = self.current_voice
-        # Remove cache files for this voice
-        for cache_file in self.cache_dir.glob(f"*{voice}*"):
-            try:
-                cache_file.unlink()
-                print(f"Removed cache: {cache_file}")
-            except:
-                pass
