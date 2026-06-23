@@ -7,6 +7,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install PySide6 pypdf python-docx sounddevice soundfile numpy pyinstaller
+    
+    - name: Build Linux executable
+      run: |
+        pyinstaller --onefile --windowed --name StudyPal --add-data "src:src" --hidden-import PySide6 --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --collect-all PySide6 run.py
+    
+    - name: Upload Linux executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: StudyPal-Linux
+        path: dist/StudyPal
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -24,7 +49,7 @@ jobs:
     
     - name: Build Windows executable
       run: |
-        pyinstaller --onefile --windowed --name StudyPal --add-data "src;src" --upx-dir . run.py
+        pyinstaller --onefile --windowed --name StudyPal --add-data "src;src" --hidden-import PySide6 --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --collect-all PySide6 run.py
     
     - name: Upload Windows executable
       uses: actions/upload-artifact@v4
@@ -32,36 +57,8 @@ jobs:
         name: StudyPal-Windows
         path: dist/StudyPal.exe
 
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    
-    - name: Install UPX
-      run: sudo apt-get update && sudo apt-get install -y upx
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install PySide6 pypdf python-docx sounddevice soundfile numpy pyinstaller
-    
-    - name: Build Linux executable
-      run: |
-        pyinstaller --onefile --windowed --name StudyPal --add-data "src:src" --upx-dir /usr/bin run.py
-    
-    - name: Upload Linux executable
-      uses: actions/upload-artifact@v4
-      with:
-        name: StudyPal-Linux
-        path: dist/StudyPal
-
   create-release:
-    needs: [build-windows, build-linux]
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
