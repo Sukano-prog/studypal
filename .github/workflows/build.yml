@@ -2,8 +2,12 @@ name: Build StudyPal
 
 on:
   release:
-    types: [created]
+    types: [created, edited]
   workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
 
 jobs:
   build-windows:
@@ -28,11 +32,10 @@ jobs:
         pyinstaller --onefile --windowed --name=StudyPal --add-data "src;src" run.py
     
     - name: Upload to Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: dist/StudyPal.exe
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   build-linux:
     runs-on: ubuntu-latest
@@ -61,8 +64,7 @@ jobs:
         pyinstaller --onefile --name=StudyPal --add-data "src:src" run.py
     
     - name: Upload to Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: dist/StudyPal
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.GITHUB_TOKEN }}
