@@ -1,93 +1,79 @@
-# 📚 StudyPal - Advanced Study Assistant
+StudyPal - Advanced Study Assistant
 
-[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
+Python Version: 3.8+
+License: MIT
+Platform: Windows, Linux, macOS
 
-> **Study Smarter, Not Harder** - Convert your study materials into audio for better learning and accessibility.
+Study Smarter, Not Harder - Convert your study materials into audio for better learning and accessibility.
 
-## ✨ Features (v1.0)
+Features (v1.0)
 
-- 📄 **Multiple Document Support**: PDF, DOCX, TXT
-- 🎤 **TTS Provider**: PyTTSX3 (cross-platform)
-- 📝 **Note Taking**: Built-in notes
-- ⚡ **Audio Caching**: Faster playback
-- 🎛️ **Controls**: Speed and volume adjustment
-- 🌙 **Themes**: Dark and Light modes
-- 🔖 **Bookmarks**: Save your reading positions
-- 📊 **Study Tracking**: Track your study sessions
+- Multiple Document Support: PDF, DOCX, TXT
+- TTS Provider: PyTTSX3 (cross-platform)
+- Note Taking: Built-in notes
+- Audio Caching: Faster playback
+- Controls: Speed and volume adjustment
+- Themes: Dark and Light modes
+- Bookmarks: Save your reading positions
+- Study Tracking: Track your study sessions
 
-## 🚀 Quick Start
+Quick Start
 
-### Installation
+Installation
 
-```bash
-# Clone the repository
+Clone the repository:
 git clone https://github.com/Sukano-prog/studypal.git
 cd studypal
 
-# Create virtual environment
+Create virtual environment:
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
+Install dependencies:
 pip install -r requirements.txt
 
-# Run StudyPal
+Run StudyPal:
 python run.py
-```
 
-### First Use
+First Use
 
 1. Launch StudyPal
-2. Click `📄 Text`, `📕 PDF`, or `📘 DOCX` to load a document
-3. Click `▶ Play` to start listening
-4. Use `Speed` and `Volume` controls to adjust playback
+2. Click Text, PDF, or DOCX to load a document
+3. Click Play to start listening
+4. Use Speed and Volume controls to adjust playback
 5. Take notes in the right panel
 
-## 📁 Project Structure
+Project Structure
 
-```
 studypal/
-├── src/
-│   ├── audio/           # Audio playback engine
-│   ├── engine/          # Document and TTS engine
-│   ├── gui/             # UI components
-│   ├── config.py        # Application configuration
-│   └── main.py          # Entry point
-├── requirements.txt     # Dependencies
-├── setup.py            # Installation script
-├── run.py              # Launcher
-├── README.md           # Documentation
-└── LICENSE             # MIT License
-```
+    src/
+        audio/           Audio playback engine
+        engine/          Document and TTS engine
+        gui/             UI components
+        config.py        Application configuration
+        main.py          Entry point
+    requirements.txt     Dependencies
+    setup.py            Installation script
+    run.py              Launcher
+    README.md           Documentation
+    LICENSE             MIT License
 
-## 🛠️ Development
+Development
 
-### Building from Source
+Building from Source
 
-**Windows:**
-```bash
+Windows:
 pip install pyinstaller
 pyinstaller --onefile --windowed --name=StudyPal run.py
-```
 
-**Linux/macOS:**
-```bash
+Linux and macOS:
 pip install pyinstaller
 pyinstaller --onefile --name=StudyPal run.py
-```
 
-## 🤝 Contributing
+Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please see CONTRIBUTING.md for guidelines.
 
-## 📄 License
+License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-<p align="center">
-  Made with ❤️ for students everywhere
-</p>
+This project is licensed under the MIT License - see the LICENSE file for details.

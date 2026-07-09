@@ -1,33 +1,34 @@
-# Changelog
+Changelog
 
 All notable changes to StudyPal will be documented in this file.
 
-## [3.0.1] - 2024-07-09
+Version 1.0.0 - 2024-07-09
 
-### Added
-- Audio effects (Echo, Reverb, EQ)
-- Bookmark support with management
+Added:
+- Initial stable release
+- PDF document support
+- DOCX document support
+- TXT document support
+- Text-to-Speech with PyTTSX3
+- Audio playback with speed control
+- Volume control
+- Dark and Light themes
+- Note taking feature
+- Audio caching for faster playback
+- Cross-platform support (Windows, Linux, macOS)
+- Bookmarks
 - Study session tracking
-- System theme support
-- Multiple TTS providers (PyTTSX3, Google TTS)
 
-### Fixed
-- Window decorations on Windows (minimize, maximize, close buttons)
-- Button visibility and styling issues
-- Layout improvements for better UX
+Features:
+- Clean and intuitive user interface
+- Progress tracking during playback
+- Status indicators
+- Keyboard shortcuts
+- Settings persistence
 
-### Changed
-- Improved audio caching with compression
-- Better error handling and logging
-- Optimized TTS generation
-- Complete codebase restructure
+Version 0.1.0 - 2024-06-01
 
-## [3.0.0] - 2024-07-01
-
-### Added
-- Initial release
-- PDF, DOCX, TXT support
-- Note taking with tags
-- Audio caching
-- Dark/Light themes
-- Cross-platform support
+Added:
+- Initial development version
+- Basic TTS functionality
+- Simple UI prototype
