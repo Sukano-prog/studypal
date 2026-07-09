@@ -6,15 +6,15 @@
 
 > **Study Smarter, Not Harder** - Convert your study materials into audio for better learning and accessibility.
 
-## ✨ Features
+## ✨ Features (v1.0)
 
-- 📄 **Multiple Document Support**: PDF, DOCX, TXT, and more
-- 🎤 **TTS Providers**: PyTTSX3, Google TTS
-- 📝 **Note Taking**: Built-in notes with tagging
-- 🔖 **Bookmarks**: Save your reading positions
-- ⚡ **Audio Caching**: Smart caching for faster playback
-- 🎛️ **Controls**: Speed, volume, and audio effects
+- 📄 **Multiple Document Support**: PDF, DOCX, TXT
+- 🎤 **TTS Provider**: PyTTSX3 (cross-platform)
+- 📝 **Note Taking**: Built-in notes
+- ⚡ **Audio Caching**: Faster playback
+- 🎛️ **Controls**: Speed and volume adjustment
 - 🌙 **Themes**: Dark and Light modes
+- 🔖 **Bookmarks**: Save your reading positions
 - 📊 **Study Tracking**: Track your study sessions
 
 ## 🚀 Quick Start
@@ -23,7 +23,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/studypal.git
+git clone https://github.com/Sukano-prog/studypal.git
 cd studypal
 
 # Create virtual environment
@@ -41,10 +41,9 @@ python run.py
 
 1. Launch StudyPal
 2. Click `📄 Text`, `📕 PDF`, or `📘 DOCX` to load a document
-3. Select your preferred voice
-4. Click `▶ Play` to start listening
-5. Use `Speed` and `Volume` controls to adjust playback
-6. Take notes in the right panel
+3. Click `▶ Play` to start listening
+4. Use `Speed` and `Volume` controls to adjust playback
+5. Take notes in the right panel
 
 ## 📁 Project Structure
 
