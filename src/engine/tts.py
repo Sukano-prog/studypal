@@ -117,6 +117,14 @@ class TTSGenerator:
             "lang": "hi",
         },
     }
+
+    # Only these voices appear in the UI dropdown.
+    # All others stay registered + cached on disk — just add them back here to re-enable.
+    SHOW_IN_DROPDOWN = [
+        "🇬🇧 Sarah (English F)",
+        "🇬🇧 Michael (English M)",
+        "👶 Amy (Kid-friendly English F)",
+    ]
     
     def __init__(self):
         self.voice_dir = Path.home() / ".local/share/piper"
@@ -137,6 +145,9 @@ class TTSGenerator:
             print("WARNING: No Piper models found.")
     
     def get_voice_list(self):
+        """Return only the voices marked visible in SHOW_IN_DROPDOWN."""
+        if self.SHOW_IN_DROPDOWN:
+            return [v for v in self.available_voices if v in self.SHOW_IN_DROPDOWN]
         return self.available_voices
 
     @property
