@@ -41,3 +41,24 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Backup files
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak5
+*.bak8
+*.bak9
+*.bak10
+*.bak11
+*.bak_*
+*.before_*
+*.working
+
+# Audio cache
+audio/
+
+# Python cache
+__pycache__/
+*.pyc
