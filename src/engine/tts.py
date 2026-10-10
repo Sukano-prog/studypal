@@ -14,10 +14,17 @@ import platform
 
 class WindowsTTS:
     def __init__(self):
-        import pyttsx3
-        self.engine = pyttsx3.init()
+        try:
+            import pyttsx3
+            self.engine = pyttsx3.init()
+            self.has_pyttsx3 = True
+        except:
+            self.has_pyttsx3 = False
+            print("Warning: pyttsx3 not available")
     
     def generate(self, text, speed=1.0):
+        if not self.has_pyttsx3:
+            raise Exception("pyttsx3 not available")
         self.engine.setProperty('rate', int(speed * 150))
         self.engine.say(text)
         self.engine.runAndWait()
@@ -27,16 +34,88 @@ class WindowsTTS:
 class TTSGenerator:
     # Available voice models
     VOICE_MODELS = {
-        "Sarah (Female, Natural)": {
+        # --- English ---
+        "🇬🇧 Sarah (English F)": {
             "model": "en_US-lessac-medium",
             "file": "en_US-lessac-medium.onnx",
-            "description": "Natural female voice"
+            "description": "Natural female voice",
+            "lang": "en",
         },
-        "Michael (Male, Natural)": {
+        "🇬🇧 Michael (English M)": {
             "model": "en_US-ryan-medium",
             "file": "en_US-ryan-medium.onnx",
-            "description": "Natural male voice"
-        }
+            "description": "Natural male voice",
+            "lang": "en",
+        },
+        "🇬🇧 Sarah Light (English F)": {
+            "model": "en_US-lessac-low",
+            "file": "en_US-lessac-low.onnx",
+            "description": "Faster, lighter female voice",
+            "lang": "en",
+        },
+        "👶 Amy (Kid-friendly English F)": {
+            "model": "en_US-amy-low",
+            "file": "en_US-amy-low.onnx",
+            "description": "Warm, kid-friendly voice",
+            "lang": "en",
+            "kid_friendly": True,
+        },
+        # --- Swahili ---
+        "🇰🇪 Lanfrica (Swahili F)": {
+            "model": "sw_CD-lanfrica-medium",
+            "file": "sw_CD-lanfrica-medium.onnx",
+            "description": "Swahili female voice",
+            "lang": "sw",
+        },
+        # --- French ---
+        "🇫🇷 Siwis (French F)": {
+            "model": "fr_FR-siwis-medium",
+            "file": "fr_FR-siwis-medium.onnx",
+            "description": "French female voice",
+            "lang": "fr",
+        },
+        # --- Spanish ---
+        "🇪🇸 DaveFX (Spanish M)": {
+            "model": "es_ES-davefx-medium",
+            "file": "es_ES-davefx-medium.onnx",
+            "description": "Spanish male voice",
+            "lang": "es",
+        },
+        # --- German ---
+        "🇩🇪 Thorsten (German M)": {
+            "model": "de_DE-thorsten-medium",
+            "file": "de_DE-thorsten-medium.onnx",
+            "description": "German male voice",
+            "lang": "de",
+        },
+        # --- Portuguese ---
+        "🇧🇷 Faber (Portuguese M)": {
+            "model": "pt_BR-faber-medium",
+            "file": "pt_BR-faber-medium.onnx",
+            "description": "Brazilian Portuguese male voice",
+            "lang": "pt",
+        },
+        # --- Arabic ---
+        "🇸🇦 Kareem (Arabic M)": {
+            "model": "ar_JO-kareem-medium",
+            "file": "ar_JO-kareem-medium.onnx",
+            "description": "Arabic male voice",
+            "lang": "ar",
+        },
+        # --- Chinese ---
+        "🇨🇳 Huayan (Chinese F)": {
+            "model": "zh_CN-huayan-medium",
+            "file": "zh_CN-huayan-medium.onnx",
+            "description": "Mandarin Chinese female voice",
+            "lang": "zh",
+        },
+        # --- Hindi ---
+        "🇮🇳 Pratham (Hindi M)": {
+            "model": "hi_IN-pratham-medium",
+            "file": "hi_IN-pratham-medium.onnx",
+            "description": "Hindi male voice",
+            "lang": "hi",
+        },
     }
     
     def __init__(self):
@@ -59,7 +138,41 @@ class TTSGenerator:
     
     def get_voice_list(self):
         return self.available_voices
-    
+
+    @property
+    def voices_by_lang(self):
+        """Return {lang_code: [voice_name, ...]} for installed voices."""
+        result = {}
+        for name in self.available_voices:
+            lang = self.VOICE_MODELS.get(name, {}).get("lang")
+            if lang:
+                result.setdefault(lang, []).append(name)
+        return result
+
+    def find_voice_for_lang(self, lang_code, kid_friendly=False):
+        """Find the best voice for a language. Falls back to English."""
+        if not lang_code:
+            return None
+        # Try exact match
+        for name in self.available_voices:
+            info = self.VOICE_MODELS.get(name, {})
+            if info.get("lang") == lang_code:
+                if kid_friendly and info.get("kid_friendly"):
+                    return name
+                if not kid_friendly:
+                    return name
+        # No exact match — try English
+        if lang_code != "en":
+            return self.find_voice_for_lang("en", kid_friendly=kid_friendly)
+        return None
+
+    def find_kid_voice(self):
+        """Find a kid-friendly voice (usually Amy)."""
+        for name in self.available_voices:
+            if self.VOICE_MODELS.get(name, {}).get("kid_friendly"):
+                return name
+        return None
+
     def set_voice(self, voice_name):
         if voice_name in self.available_voices:
             self.current_voice = voice_name
@@ -74,9 +187,11 @@ class TTSGenerator:
         if not self.available or self.current_voice is None:
             raise Exception("No voice available")
         
-        # If text is short, generate directly
+        # If text is short, generate directly (one chunk)
         if len(text) <= 3000:
-            return self._generate_chunk(text, speed)
+            audio, sr = self._generate_chunk(text, speed)
+            duration = len(audio) / sr if sr else 0
+            return audio, sr, [{"text": text, "start": 0.0, "end": duration}]
         
         # Split long text into chunks
         print(f"Text too long ({len(text)} chars). Splitting into chunks...")
@@ -99,16 +214,27 @@ class TTSGenerator:
         
         print(f"Generated {len(chunks)} chunks")
         
-        # Generate each chunk
+        # Generate each chunk and record timing
         all_audio = []
         sr = None
+        chunk_timings = []
+        cumulative_samples = 0
         
         for i, chunk in enumerate(chunks):
             print(f"Generating chunk {i+1}/{len(chunks)}...")
             audio, sr = self._generate_chunk(chunk, speed)
+            chunk_samples = len(audio)
+            start_sec = cumulative_samples / sr if sr else 0
+            end_sec = (cumulative_samples + chunk_samples) / sr if sr else 0
+            chunk_timings.append({
+                "text": chunk,
+                "start": start_sec,
+                "end": end_sec,
+            })
             all_audio.append(audio)
+            cumulative_samples += chunk_samples
         
-        return np.concatenate(all_audio), sr
+        return np.concatenate(all_audio), sr, chunk_timings
     
     def _generate_chunk(self, text, speed=1.0):
         """Generate audio for a single chunk"""
@@ -209,9 +335,39 @@ class TTSManager:
     
     def get_voice_list(self):
         return self.available_voices
+
+    @property
+    def current_voice(self):
+        """Return the currently selected voice name."""
+        return getattr(self.tts, "current_voice", None)
     
     def set_voice(self, voice):
-        return True
+        """Delegate to the underlying generator; return True on success."""
+        if hasattr(self.tts, "set_voice"):
+            return self.tts.set_voice(voice)
+        return False
     
+    @property
+    def voices_by_lang(self):
+        if hasattr(self.tts, "voices_by_lang"):
+            return self.tts.voices_by_lang
+        return {"en": self.available_voices}
+
+    def find_voice_for_lang(self, lang_code, kid_friendly=False):
+        if hasattr(self.tts, "find_voice_for_lang"):
+            return self.tts.find_voice_for_lang(lang_code, kid_friendly=kid_friendly)
+        return None
+
+    def find_kid_voice(self):
+        if hasattr(self.tts, "find_kid_voice"):
+            return self.tts.find_kid_voice()
+        return None
+
     def generate_audio(self, text, speed=1.0):
-        return self.tts.generate(text, speed)
+        result = self.tts.generate(text, speed)
+        # Normalize to always return 3-tuple (audio, sr, chunk_timings)
+        if len(result) == 2:
+            audio, sr = result
+            duration = len(audio) / sr if sr else 0
+            return audio, sr, [{"text": text, "start": 0.0, "end": duration}]
+        return result

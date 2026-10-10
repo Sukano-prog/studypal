@@ -17,3 +17,27 @@ data/notes/
 .DS_Store
 Thumbs.db
 windows_packages/
+
+# Backup files
+*.bak
+*.bak2
+*.bak3
+*.bak4
+*.bak5
+*.bak8
+*.bak9
+*.bak10
+*.bak11
+*.before_*
+*.working
+
+# Audio cache
+audio/
+*.wav
+*.mp3
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

@@ -10,11 +10,31 @@ import threading
 import json
 import sounddevice as sd
 import time
+import re
 
 from engine.tts import TTSManager
 from engine.document import load_document
 from audio.player import AudioPlayer
+from gui.listen_view import ListenView
 from datetime import datetime
+
+
+class ClickableSlider(QSlider):
+    """QSlider that jumps to the clicked position instead of only dragging."""
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            # Jump to clicked position
+            value = QStyle.sliderValueFromPosition(
+                self.minimum(), self.maximum(),
+                event.position().x(), self.width()
+            )
+            self.setValue(value)
+            self.sliderPressed.emit()
+            self.sliderMoved.emit(value)
+            self.sliderReleased.emit()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -38,8 +58,10 @@ class MainWindow(QMainWindow):
         self.sample_rate = None
         self.current_speed = 1.0
         self.is_seeking = False
+        self._seek_in_progress = False
         self._speed_timer = None
         self.progress_thread = None
+        self._loop_running = False
         self.stop_progress = False
         
         # Load recent files
@@ -52,7 +74,14 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
+        outer_layout = QVBoxLayout(central)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.tabs = QTabWidget()
+
+        # --- Tab 1: Read to Me (existing UI) ---
+        read_widget = QWidget()
+        layout = QVBoxLayout(read_widget)
         
         # Toolbar
         toolbar = QWidget()
@@ -96,6 +125,9 @@ class MainWindow(QMainWindow):
         self.text_display.setFont(QFont("Segoe UI", 12))
         self.text_display.setPlaceholderText("Load a document...")
         self.text_display.setReadOnly(True)
+        self.text_display.setMouseTracking(True)
+        # Double-click a sentence to start playback from there
+        self.text_display.mouseDoubleClickEvent = self._on_text_double_click
         layout.addWidget(self.text_display)
         
         # Progress slider
@@ -104,7 +136,7 @@ class MainWindow(QMainWindow):
         self.time_label = QLabel("00:00")
         slider_layout.addWidget(self.time_label)
         
-        self.progress_slider = QSlider(Qt.Horizontal)
+        self.progress_slider = ClickableSlider(Qt.Horizontal)
         self.progress_slider.setRange(0, 1000)
         self.progress_slider.setValue(0)
         self.progress_slider.setEnabled(False)
@@ -129,6 +161,11 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_playback)
         controls.addWidget(self.stop_btn)
+
+        self.save_audio_btn = QPushButton("💾 Save Audio")
+        self.save_audio_btn.setEnabled(False)
+        self.save_audio_btn.clicked.connect(self.save_audio)
+        controls.addWidget(self.save_audio_btn)
         
         controls.addStretch()
         
@@ -233,6 +270,15 @@ class MainWindow(QMainWindow):
     
     # ========== FORMATTING METHODS ==========
     
+        # Register Tab 1
+        self.tabs.addTab(read_widget, "📖 Read to Me")
+
+        # --- Tab 2: Listen to Me ---
+        self.listen_view = ListenView()
+        self.tabs.addTab(self.listen_view, "🎙️ Listen to Me")
+
+        outer_layout.addWidget(self.tabs)
+
     def toggle_bold(self):
         cursor = self.notes_display.textCursor()
         if cursor.hasSelection():
@@ -291,15 +337,339 @@ class MainWindow(QMainWindow):
     
     # ========== END FORMATTING ==========
     
+    # ========== READ-ALONG ==========
+
+    def _split_into_sentences(self, text):
+        """Return list of (start_char, end_char, sentence_text)."""
+        sentences = []
+        # Split on sentence boundaries + keep paragraphs
+        pattern = re.compile(r'[^.!?\n]+[.!?]?\s*|\n+')
+        for match in pattern.finditer(text):
+            s, e = match.span()
+            chunk = text[s:e]
+            if chunk.strip():
+                sentences.append((s, e, chunk))
+        return sentences
+
+    def _build_sentence_map(self):
+        """Build sentence -> (char range, time range).
+
+        If we have real TTS chunk timings, use them for accurate sync.
+        Otherwise, fall back to character-count estimation."""
+        text = self.text_display.toPlainText()
+        if not text or self.audio_data is None:
+            self._sentence_map = []
+            return
+
+        sentences = self._split_into_sentences(text)
+        total_duration = len(self.audio_data) / self.sample_rate
+
+        # --- Preferred: use real chunk timings from TTS ---
+        if getattr(self, "_chunk_timings", None):
+            self._build_map_from_chunks(sentences, total_duration)
+            return
+
+        # --- Fallback: char-count estimate (old behavior) ---
+        total_chars = sum(len(s[2]) for s in sentences)
+        self._sentence_map = []
+        cursor_time = 0.0
+        for (s, e, chunk) in sentences:
+            frac = len(chunk) / total_chars if total_chars else 0
+            seg_dur = frac * total_duration
+            self._sentence_map.append({
+                "start_char": s,
+                "end_char": e,
+                "start_time": cursor_time,
+                "end_time": cursor_time + seg_dur,
+            })
+            cursor_time += seg_dur
+
+        self._last_highlighted_idx = -1
+
+    def _build_map_from_chunks(self, sentences, total_duration):
+        """Align sentence char ranges with real TTS chunk time ranges."""
+        chunks = self._chunk_timings
+
+        # Full plain text and running char offset
+        full_text = self.text_display.toPlainText()
+        text_pos = 0
+
+        self._sentence_map = []
+        chunk_idx = 0
+        chunk_char_start = 0  # char offset in full_text where current chunk begins
+
+        for (s, e, chunk_text) in sentences:
+            # Advance to the chunk that contains this sentence
+            while chunk_idx < len(chunks):
+                current_chunk = chunks[chunk_idx]
+                chunk_char_end = chunk_char_start + len(current_chunk["text"])
+                if s < chunk_char_end:
+                    # This sentence lives (at least partly) inside chunk_idx
+                    chunk_start_time = current_chunk["start"]
+                    chunk_end_time = current_chunk["end"]
+                    chunk_char_len = max(1, len(current_chunk["text"]))
+
+                    # Interpolate sentence's time within the chunk by char fraction
+                    local_start = (s - chunk_char_start) / chunk_char_len
+                    local_end = (e - chunk_char_start) / chunk_char_len
+                    start_time = chunk_start_time + local_start * (chunk_end_time - chunk_start_time)
+                    end_time = chunk_start_time + local_end * (chunk_end_time - chunk_start_time)
+
+                    self._sentence_map.append({
+                        "start_char": s,
+                        "end_char": e,
+                        "start_time": start_time,
+                        "end_time": end_time,
+                    })
+                    break
+                else:
+                    # Sentence belongs to a later chunk
+                    chunk_char_start = chunk_char_end
+                    chunk_idx += 1
+            else:
+                # Ran out of chunks — assign last known time
+                last = self._sentence_map[-1] if self._sentence_map else {"end_time": total_duration}
+                self._sentence_map.append({
+                    "start_char": s,
+                    "end_char": e,
+                    "start_time": last["end_time"],
+                    "end_time": total_duration,
+                })
+
+        self._last_highlighted_idx = -1
+
+    def _highlight_sentence(self, idx):
+        """Highlight sentence at index; auto-scroll to keep it visible."""
+        if not getattr(self, "_sentence_map", None):
+            return
+        if idx == getattr(self, "_last_highlighted_idx", -1):
+            return
+
+        sel = QTextEdit.ExtraSelection()
+        fmt = QTextCharFormat()
+        fmt.setBackground(QColor("#fff59d"))
+        fmt.setForeground(QColor("#000000"))
+        sel.format = fmt
+
+        if idx < 0:
+            # Clear highlight (end of playback)
+            self.text_display.setExtraSelections([])
+            self._last_highlighted_idx = -1
+            return
+
+        if idx >= len(self._sentence_map):
+            return
+
+        item = self._sentence_map[idx]
+        # IMPORTANT: use a DETACHED cursor (document-only, not widget-bound)
+        # so QTextEdit never auto-scrolls to "keep the cursor visible"
+        cursor = QTextCursor(self.text_display.document())
+        cursor.setPosition(item["start_char"])
+        cursor.setPosition(item["end_char"], QTextCursor.KeepAnchor)
+        sel.cursor = cursor
+
+        self.text_display.setExtraSelections([sel])
+        self._last_highlighted_idx = idx
+
+        # Auto-scroll WITHOUT moving the caret (setTextCursor causes jumps)
+        self._scroll_sentence_into_view(item["start_char"], item["end_char"])
+
+    def _scroll_sentence_into_view(self, start_char, end_char):
+        """Scroll so the current sentence sits ~30% from the top.
+
+        Uses documentLayout().blockBoundingRect() — does NOT call cursorRect(),
+        which would trigger QTextEdit's internal ensureCursorVisible() and cause
+        the widget to jump to the top on every tick.
+        """
+        try:
+            doc = self.text_display.document()
+            scrollbar = self.text_display.verticalScrollBar()
+            viewport_h = self.text_display.viewport().height()
+
+            # Find the block (paragraph) that contains start_char
+            block = doc.findBlock(start_char)
+            if not block.isValid():
+                return
+
+            # Y position of this block in document coordinates (no side effects)
+            layout = doc.documentLayout()
+            rect = layout.blockBoundingRect(block)
+            top_y = rect.top()
+
+            current = scrollbar.value()
+
+            # Comfort zone: don't scroll unless sentence is outside it
+            comfort_top = current + viewport_h * 0.15
+            comfort_bottom = current + viewport_h * 0.70
+
+            if top_y < comfort_top or top_y > comfort_bottom:
+                # Place the sentence ~30% from the top of the viewport
+                desired_scroll = int(top_y - viewport_h * 0.30)
+                scrollbar.setValue(max(0, desired_scroll))
+        except Exception as e:
+            print(f"[scroll] {e}")
+
+    def _char_pos_to_time(self, char_pos):
+        """Return the time (seconds) corresponding to a character position."""
+        if not getattr(self, "_sentence_map", None):
+            return 0.0
+        for item in self._sentence_map:
+            if item["start_char"] <= char_pos <= item["end_char"]:
+                # Interpolate within the sentence for precision
+                span_chars = max(1, item["end_char"] - item["start_char"])
+                span_time = item["end_time"] - item["start_time"]
+                frac = (char_pos - item["start_char"]) / span_chars
+                return item["start_time"] + frac * span_time
+        # Fallback: end of audio
+        return self._sentence_map[-1]["end_time"] if self._sentence_map else 0.0
+
+    def _on_text_double_click(self, event):
+        """Double-click anywhere in text_display: jump playback to that point."""
+        cursor = self.text_display.cursorForPosition(event.pos())
+        char_pos = cursor.position()
+
+        if self.audio_data is None:
+            return QTextEdit.mouseDoubleClickEvent(self.text_display, event)
+
+        target_time = self._char_pos_to_time(char_pos)
+
+        # Find which sentence owns this char position (directly, not via player)
+        target_idx = self._sentence_idx_for_char(char_pos)
+
+        # Pause the update loop while we rearrange things
+        self.is_seeking = True
+        self._seek_in_progress = True
+
+        if self.is_playing and not self.is_paused:
+            # Already playing: just seek; don't call play() (would reset)
+            self.player.seek(target_time)
+        else:
+            # Not playing: start from target position
+            self.player.play_from(target_time)
+            self.is_playing = True
+            self.is_paused = False
+            self.play_btn.setText("⏸ Pause")
+            self.stop_btn.setEnabled(True)
+            self.stop_progress = False
+            if self.progress_thread is None or not self.progress_thread.is_alive():
+                self.progress_thread = threading.Thread(
+                    target=self.update_progress_loop, daemon=True
+                )
+                self.progress_thread.start()
+
+        # Update UI using the TARGET values, not player.get_position()
+        self.progress_slider.setValue(
+            int((target_time / max(0.01, self.player.duration)) * 1000)
+        )
+        self.time_label.setText(self.format_time(target_time))
+
+        # Force highlight to the target sentence directly
+        self._last_highlighted_idx = -1
+        if target_idx >= 0:
+            self._highlight_sentence(target_idx)
+
+        # Release the seeking flag after the audio position stabilizes
+        QTimer.singleShot(200, self._release_seek_flag)
+
+        self.statusBar().showMessage(
+            f"Jumped to {self.format_time(target_time)}", 2000
+        )
+
+    def _release_seek_flag(self):
+        # Re-sync once with now-stable position
+        self._last_highlighted_idx = -1
+        idx = self._current_sentence_idx()
+        self._highlight_sentence(idx)
+        # Release both flags
+        self.is_seeking = False
+        self._seek_in_progress = False
+
+    def _sentence_idx_for_char(self, char_pos):
+        """Return the sentence index that contains char_pos."""
+        if not getattr(self, "_sentence_map", None):
+            return -1
+        for i, item in enumerate(self._sentence_map):
+            if item["start_char"] <= char_pos <= item["end_char"]:
+                return i
+        # Fallback: nearest previous sentence
+        best = -1
+        for i, item in enumerate(self._sentence_map):
+            if item["end_char"] <= char_pos:
+                best = i
+            else:
+                break
+        return best
+
+    def _clear_readalong(self):
+        self.text_display.setExtraSelections([])
+        self._last_highlighted_idx = -1
+
+    def _current_sentence_idx(self):
+        if not getattr(self, "_sentence_map", None):
+            return -1
+        t = self.player.get_position()
+        sm = self._sentence_map
+
+        # Exact match
+        for i, item in enumerate(sm):
+            if item["start_time"] <= t <= item["end_time"]:
+                return i
+
+        # Before first sentence → highlight the first
+        if t < sm[0]["start_time"]:
+            return 0
+
+        # After last sentence → highlight the last
+        if t >= sm[-1]["end_time"]:
+            return len(sm) - 1
+
+        # Between sentences (gap) → nearest previous sentence
+        for i in range(len(sm) - 1):
+            if sm[i]["end_time"] <= t < sm[i + 1]["start_time"]:
+                return i
+
+        return -1
+
     def format_time(self, seconds):
         minutes = int(seconds // 60)
         secs = int(seconds % 60)
         return f"{minutes:02d}:{secs:02d}"
     
+    def _ensure_progress_loop(self):
+        """Start the progress loop ONLY if one isn't already running."""
+        if getattr(self, "_loop_running", False):
+            return
+        if self.progress_thread is not None and self.progress_thread.is_alive():
+            return
+        self.progress_thread = threading.Thread(
+            target=self.update_progress_loop, daemon=True
+        )
+        self.progress_thread.start()
+
     def update_progress_loop(self):
+        # READ-ALONG: guard attributes for first run
+        if not hasattr(self, "_sentence_map"):
+            self._sentence_map = []
+        if not hasattr(self, "_last_highlighted_idx"):
+            self._last_highlighted_idx = -1
+
+        # SINGLETON GUARD: if another loop is already running, bail immediately
+        if getattr(self, "_loop_running", False):
+            print("[LOOP] another loop already running — exiting this one")
+            return
+        self._loop_running = True
+        try:
+            self._progress_loop_inner()
+        finally:
+            self._loop_running = False
+
+    def _progress_loop_inner(self):
         while self.is_playing and not self.stop_progress:
             try:
-                if not self.is_paused and not self.is_seeking:
+                # Gate on BOTH flags (thread visibility workaround)
+                if (not self.is_paused
+                        and not self.is_seeking
+                        and not getattr(self, "_seek_in_progress", False)):
                     current_time = self.player.get_position()
                     duration = self.player.duration
                     if duration > 0 and current_time >= 0:
@@ -309,6 +679,17 @@ class MainWindow(QMainWindow):
                         self.progress_slider.setValue(progress)
                         self.time_label.setText(self.format_time(current_time))
                         self.duration_label.setText(self.format_time(duration))
+                        self._highlight_sentence(self._current_sentence_idx())
+
+                        # Detect end-of-audio and clean up
+                        if current_time >= duration - 0.05:
+                            self.is_playing = False
+                            self.play_btn.setText("▶ Play")
+                            self.stop_btn.setEnabled(False)
+                            self.progress_slider.setValue(1000)
+                            self._clear_readalong()
+                            self.statusBar().showMessage("Playback finished")
+                            break
             except:
                 pass
             time.sleep(0.1)
@@ -335,8 +716,8 @@ class MainWindow(QMainWindow):
             self.player.play()
             self.play_btn.setText("⏸ Pause")
             self.stop_progress = False
-            self.progress_thread = threading.Thread(target=self.update_progress_loop, daemon=True)
-            self.progress_thread.start()
+            if self.progress_thread is None or not self.progress_thread.is_alive():
+                self._ensure_progress_loop()
             self.statusBar().showMessage("Resumed")
     
     def play_text(self):
@@ -351,10 +732,16 @@ class MainWindow(QMainWindow):
             self.player.play()
             self.play_btn.setText("⏸ Pause")
             self.stop_btn.setEnabled(True)
+            self.save_audio_btn.setEnabled(True)
             self.statusBar().showMessage("Playing...")
             self.stop_progress = False
-            self.progress_thread = threading.Thread(target=self.update_progress_loop, daemon=True)
-            self.progress_thread.start()
+            # READ-ALONG: only rebuild if text changed
+            if not getattr(self, "_sentence_map", None) or \
+               getattr(self, "_last_text_hash", None) != hash(text):
+                self._build_sentence_map()
+                self._last_text_hash = hash(text)
+            if self.progress_thread is None or not self.progress_thread.is_alive():
+                self._ensure_progress_loop()
             return
         
         self.play_btn.setEnabled(False)
@@ -365,12 +752,20 @@ class MainWindow(QMainWindow):
             try:
                 speed = self.speed_slider.value() / 100.0
                 self.current_speed = speed
-                audio, sr = self.tts.generate_audio(text, speed)
+                result = self.tts.generate_audio(text, speed)
+                # Handle both 2-tuple and 3-tuple returns
+                if len(result) == 3:
+                    audio, sr, chunk_timings = result
+                else:
+                    audio, sr = result
+                    chunk_timings = None
                 self.audio_data = audio
                 self.sample_rate = sr
+                self._chunk_timings = chunk_timings   # READ-ALONG: real timing
                 self.player.load(audio, sr)
                 self.player.speed = speed
                 self.duration_label.setText(self.format_time(len(audio) / sr))
+                self._build_sentence_map()   # READ-ALONG: prep sentence timing
                 
                 self.player.play()
                 self.is_playing = True
@@ -380,11 +775,12 @@ class MainWindow(QMainWindow):
                 self.play_btn.setText("⏸ Pause")
                 self.play_btn.setEnabled(True)
                 self.stop_btn.setEnabled(True)
+                self.save_audio_btn.setEnabled(True)
                 self.statusBar().showMessage("Playing...")
                 
                 self.stop_progress = False
-                self.progress_thread = threading.Thread(target=self.update_progress_loop, daemon=True)
-                self.progress_thread.start()
+                if self.progress_thread is None or not self.progress_thread.is_alive():
+                    self._ensure_progress_loop()
                 
             except Exception as e:
                 self.play_btn.setText("▶ Play")
@@ -401,6 +797,7 @@ class MainWindow(QMainWindow):
         self.player.stop()
         self.progress_slider.setValue(0)
         self.progress_slider.setEnabled(False)
+        self._clear_readalong()   # READ-ALONG: remove highlight
         self.time_label.setText("00:00")
         self.play_btn.setText("▶ Play")
         self.play_btn.setEnabled(True)
@@ -409,14 +806,19 @@ class MainWindow(QMainWindow):
     
     def on_slider_pressed(self):
         self.is_seeking = True
+        self._seek_in_progress = True
     
     def on_slider_released(self):
-        self.is_seeking = False
         if self.audio_data is not None:
             value = self.progress_slider.value()
             position = (value / 1000) * len(self.audio_data) / self.sample_rate
             self.player.seek(position)
             self.time_label.setText(self.format_time(position))
+            # Refresh highlight immediately
+            self._last_highlighted_idx = -1
+            self._highlight_sentence(self._current_sentence_idx())
+        # Delay releasing the seek flag so update loop doesn't fight us
+        QTimer.singleShot(500, lambda: (setattr(self, "is_seeking", False), setattr(self, "_seek_in_progress", False)))
     
     def on_speed_changed(self, value):
         speed = value / 100.0
@@ -431,14 +833,53 @@ class MainWindow(QMainWindow):
         self._speed_timer.start(100)
     
     def _apply_speed(self, speed):
-        if self.is_playing and not self.is_paused:
-            self.player.set_speed(speed)
-    
+        old_speed = getattr(self, "current_speed", 1.0) or 1.0
+        self.player.set_speed(speed)
+        self.current_speed = speed
+
+        # Rescale sentence map to match new perceived duration
+        if getattr(self, "_sentence_map", None) and old_speed > 0:
+            factor = old_speed / speed
+            for item in self._sentence_map:
+                item["start_time"] *= factor
+                item["end_time"] *= factor
+            self._last_highlighted_idx = -1
+
+        self.statusBar().showMessage(f"Speed: {speed:.2f}x", 1500)
+
+
+    def _rescale_sentence_map_for_speed(self, new_speed):
+        """Rescale sentence times from base_duration to new duration."""
+        if not self._sentence_map:
+            return
+        # base times assumed at speed 1.0
+        factor = 1.0 / new_speed
+        for item in self._sentence_map:
+            item["start_time"] *= factor
+            item["end_time"] *= factor
+
+
     def on_voice_changed(self, voice):
+        print(f"[VOICE] changed to: {voice}")
         self.tts.set_voice(voice)
         self.statusBar().showMessage(f"Voice changed to: {voice}", 2000)
+        # Invalidate in-memory audio so next Play regenerates with new voice
         self.audio_data = None
         self.sample_rate = None
+        # Also stop the player — it may still hold old audio
+        try:
+            self.player.stop()
+            self.player.audio_data = None
+        except Exception:
+            pass
+        self.is_playing = False
+        self.is_paused = False
+        self.play_btn.setText("▶ Play")
+        self.stop_btn.setEnabled(False)
+        self.save_audio_btn.setEnabled(False)
+        # Force play_text to regenerate by clearing any cached "already playing" state
+        self._last_text_hash = None
+        print(f"[VOICE] audio_data cleared, player stopped")
     
     def load_recent_files(self):
         config_file = Path.home() / ".studypal_recent.json"
@@ -582,6 +1023,66 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
     
+    def save_audio(self):
+        """Save currently-generated TTS audio to WAV or MP3."""
+        if self.audio_data is None:
+            QMessageBox.information(self, "No Audio",
+                                    "Play the document first to generate audio.")
+            return
+
+        # Default filename from the current document
+        base = Path(self.current_file).stem if self.current_file else "studypal_speech"
+        default_name = f"{base}.wav"
+
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Save Audio",
+            str(Path.home() / default_name),
+            "WAV Audio (*.wav);;MP3 Audio (*.mp3)",
+        )
+        if not path:
+            return
+
+        try:
+            import soundfile as sf
+            import subprocess
+            import tempfile
+            import os
+
+            if path.lower().endswith(".mp3"):
+                # Write WAV to temp, convert via ffmpeg
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    tmp_wav = tmp.name
+                sf.write(tmp_wav, self.audio_data, self.sample_rate)
+                try:
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-i", tmp_wav, path],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                finally:
+                    try:
+                        os.unlink(tmp_wav)
+                    except Exception:
+                        pass
+            else:
+                # Native WAV
+                if not path.lower().endswith(".wav"):
+                    path += ".wav"
+                sf.write(path, self.audio_data, self.sample_rate)
+
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+            self.statusBar().showMessage(
+                f"Audio saved: {Path(path).name} ({size_mb:.1f} MB)", 5000
+            )
+            QMessageBox.information(
+                self, "Saved",
+                f"Audio saved to:\n{path}\n\nSize: {size_mb:.2f} MB"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Save Failed", f"Could not save audio:\n{e}")
+
     def save_notes(self):
         content = self.notes_display.toHtml()
         if not content.strip():
