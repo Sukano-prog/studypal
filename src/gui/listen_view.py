@@ -10,12 +10,13 @@ from PySide6.QtCore import Qt
 
 from services.transcription_service import TranscriptionService
 from gui.listen_worker import ListenWorker
+from annotations import Annotation, AnnotationType, AnnotationRepository
 
 
 # Human-readable names and flags for every language we support
 LANGUAGE_META = {
     "en": ("English", "🇬🇧"),
-    "sw": ("Swahili", "🇰🇪"),
+    "sw": ("Kiswahili", "🇰🇪"),
     "fr": ("French", "🇫🇷"),
     "es": ("Spanish", "🇪🇸"),
     "de": ("German", "🇩🇪"),
@@ -38,6 +39,10 @@ class ListenView(QWidget):
         self._worker = None
         self._current_result = None
         self._current_audio_path = None
+        self._current_doc_hash = None
+
+        # Annotation system
+        self._annotations = AnnotationRepository()
 
         self._build_ui()
 
@@ -95,6 +100,18 @@ class ListenView(QWidget):
         self.model_combo.addItems(MODELS)
         self.model_combo.setCurrentText("base")
         opt_row.addWidget(self.model_combo)
+
+        opt_row.addSpacing(20)
+        opt_row.addWidget(QLabel("Audio language:"))
+        self.source_lang_combo = QComboBox()
+        self.source_lang_combo.setMinimumWidth(180)
+        self.source_lang_combo.addItem("🌐 Auto-detect", None)
+        for code, (name, flag) in LANGUAGE_META.items():
+            self.source_lang_combo.addItem(f"{flag} {name}", code)
+        sw_idx = self.source_lang_combo.findData("sw")
+        if sw_idx >= 0:
+            self.source_lang_combo.setCurrentIndex(sw_idx)
+        opt_row.addWidget(self.source_lang_combo)
 
         opt_row.addSpacing(20)
         opt_row.addWidget(QLabel("Translate to:"))
@@ -185,6 +202,10 @@ class ListenView(QWidget):
         t_layout = QVBoxLayout(t_box)
         self.transcript_view = QTextEdit()
         self.transcript_view.setPlaceholderText("Transcript will appear here...")
+        self.transcript_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.transcript_view.customContextMenuRequested.connect(
+            self._on_transcript_context_menu
+        )
         t_layout.addWidget(self.transcript_view)
         results_splitter.addWidget(t_box)
 
@@ -203,9 +224,20 @@ class ListenView(QWidget):
     # ---------- service ----------
 
     def _get_service(self) -> TranscriptionService:
-        if self._service is None:
-            model = self.model_combo.currentText()
-            self._service = TranscriptionService(model_size=model)
+        model = self.model_combo.currentText()
+        # Pull source language from the combo (None = auto-detect)
+        src_lang = None
+        if hasattr(self, "source_lang_combo"):
+            src_lang = self.source_lang_combo.currentData()
+
+        # Rebuild service if settings changed (cheap — just stores strings)
+        if (self._service is None
+                or self._service.model_size != model
+                or self._service.source_language != src_lang):
+            self._service = TranscriptionService(
+                model_size=model,
+                source_language=src_lang,
+            )
         return self._service
 
     # ---------- file picking ----------
@@ -290,6 +322,13 @@ class ListenView(QWidget):
 
         self.transcript_view.setPlainText(result["transcript"])
 
+        # Compute doc_hash for annotations now that audio path is known
+        self._current_doc_hash = None
+        self._ensure_doc_hash()
+
+        # Overlay any existing annotations for this file
+        self._render_annotations()
+
         if result.get("translation"):
             self.translation_view.setPlainText(result["translation"])
         else:
@@ -310,6 +349,148 @@ class ListenView(QWidget):
         self.notes_btn.setEnabled(True)
         self.read_btn.setEnabled(True)
         self.save_audio_btn.setEnabled(True)
+
+    # ---------- annotations ----------
+
+    def _ensure_doc_hash(self):
+        """Compute and cache the current audio file's hash."""
+        if self._current_doc_hash:
+            return self._current_doc_hash
+        if not self._current_audio_path:
+            return None
+        from services.transcription_service import _file_hash
+        from pathlib import Path as _P
+        try:
+            self._current_doc_hash = _file_hash(_P(self._current_audio_path))
+        except Exception as e:
+            print(f"[ann] Could not hash audio: {e}")
+            return None
+        return self._current_doc_hash
+
+    def _on_transcript_context_menu(self, pos):
+        if not self._current_result:
+            return
+        doc_hash = self._ensure_doc_hash()
+        if not doc_hash:
+            return
+
+        menu = self.transcript_view.createStandardContextMenu()
+
+        cursor = self.transcript_view.textCursor()
+        has_selection = cursor.hasSelection()
+        char_start = cursor.selectionStart() if has_selection else cursor.position()
+        char_end = cursor.selectionEnd() if has_selection else char_start
+        line_no = cursor.blockNumber() + 1
+
+        menu.addSeparator()
+        act_bookmark = menu.addAction("📌 Bookmark this line")
+        act_highlight = menu.addAction("🖍️ Highlight selection")
+        act_highlight.setEnabled(has_selection)
+        act_note = menu.addAction("📝 Add note...")
+        act_tag = menu.addAction("🏷️ Add tag...")
+        menu.addSeparator()
+        act_clear = menu.addAction("🗑️ Clear all annotations for this file")
+
+        chosen = menu.exec(self.transcript_view.mapToGlobal(pos))
+        if not chosen:
+            return
+
+        if chosen == act_bookmark:
+            self._add_annotation(
+                doc_hash, char_start, char_end, line_no,
+                AnnotationType.BOOKMARK, color="#2196F3",
+            )
+        elif chosen == act_highlight:
+            self._add_annotation(
+                doc_hash, char_start, char_end, line_no,
+                AnnotationType.HIGHLIGHT, color="#FFEB3B",
+            )
+        elif chosen == act_note:
+            from PySide6.QtWidgets import QInputDialog
+            text, ok = QInputDialog.getMultiLineText(
+                self, "Add note", "Note:", ""
+            )
+            if ok and text.strip():
+                self._add_annotation(
+                    doc_hash, char_start, char_end, line_no,
+                    AnnotationType.NOTE, content=text.strip(),
+                )
+        elif chosen == act_tag:
+            from PySide6.QtWidgets import QInputDialog
+            tag, ok = QInputDialog.getText(
+                self, "Add tag", "Tag (without #):", ""
+            )
+            if ok and tag.strip():
+                self._add_annotation(
+                    doc_hash, char_start, char_end, line_no,
+                    AnnotationType.BOOKMARK, tags=[tag.strip()],
+                )
+        elif chosen == act_clear:
+            n = self._annotations.delete_for_doc(doc_hash)
+            self.status_label.setText(f"Deleted {n} annotations")
+            self._render_annotations()
+
+    def _add_annotation(self, doc_hash, char_start, char_end, line_no,
+                        ann_type, color=None, content=None, tags=None):
+        ann = Annotation(
+            doc_hash=doc_hash,
+            char_start=char_start,
+            char_end=char_end,
+            line_number=line_no,
+            type=ann_type,
+            color=color,
+            content=content,
+            tags=tags or [],
+        )
+        self._annotations.add(ann)
+        self.status_label.setText(
+            f"Added {ann_type.value} on line {line_no}"
+        )
+        self._render_annotations()
+
+    def _render_annotations(self):
+        """Highlight all annotations for the current doc inside transcript_view."""
+        doc_hash = self._ensure_doc_hash()
+        if not doc_hash:
+            return
+
+        items = self._annotations.list_for_doc(doc_hash)
+        if not items:
+            return
+
+        from PySide6.QtGui import QTextCharFormat, QColor, QTextCursor
+        doc = self.transcript_view.document()
+        text_len = len(doc.toPlainText())
+
+        # Sort by start, apply in reverse so earlier positions don't shift later
+        items = sorted(items, key=lambda a: a.char_start, reverse=True)
+
+        # Block signals so we don't fire textChanged
+        self.transcript_view.blockSignals(True)
+        try:
+            for a in items:
+                fmt = QTextCharFormat()
+
+                # Silences render as a subtle italic gray — easy to scan, not shouty
+                if a.type.value == "silence":
+                    fmt.setForeground(QColor("#9E9E9E"))
+                    fmt.setFontItalic(True)
+                elif a.color:
+                    fmt.setBackground(QColor(a.color))
+                    fmt.setForeground(QColor("#111111"))
+
+                if a.type == AnnotationType.BOOKMARK:
+                    fmt.setFontWeight(700)
+
+                cs = max(0, min(a.char_start, text_len))
+                ce = max(cs, min(a.char_end, text_len))
+
+                cursor = QTextCursor(doc)
+                cursor.setPosition(cs)
+                cursor.setPosition(ce, QTextCursor.KeepAnchor)
+                cursor.mergeCharFormat(fmt)
+        finally:
+            self.transcript_view.blockSignals(False)
 
     def _on_error(self, msg: str):
         self.progress.setVisible(False)
