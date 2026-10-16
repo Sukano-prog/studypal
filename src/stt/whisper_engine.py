@@ -5,7 +5,6 @@ Falls back to openai-whisper if faster-whisper isn't installed.
 """
 from pathlib import Path
 
-# Try faster-whisper first (much faster on CPU)
 try:
     from faster_whisper import WhisperModel
     HAS_FASTER = True
@@ -14,125 +13,151 @@ except ImportError:
     import whisper  # type: ignore
 
 
-class WhisperEngine:
-    """Wraps Whisper for local transcription.
+# ---------------------------------------------------------------------------
+# Language-specific tuning
+# ---------------------------------------------------------------------------
+LOW_RESOURCE_LANGUAGES = {
+    "sw", "yo", "ha", "am", "zu", "so", "rw", "ig",
+    "ur", "ta", "te", "ml",
+}
 
-    Backend:
-      - faster-whisper if installed (recommended)
-      - openai-whisper otherwise
-    """
+MIN_MODEL_BY_LANG = {
+    "sw": "medium", "yo": "small", "ha": "small", "am": "small",
+    "zu": "small", "so": "small", "rw": "small", "ig": "small",
+}
+
+# Local model directories — checked before HF cache.
+# Populated by the user manually (medium is too big for auto-download).
+LOCAL_MODEL_DIRS = {
+    "medium": Path.home() / ".local" / "share" / "studypal" / "models" / "medium",
+}
+
+INITIAL_PROMPTS = {
+    "sw": (
+        "Hii ni rekodi ya Kiswahili sanifu. Maneno ya kitaalamu, "
+        "majina ya mahali, na istilahi za Kiswahili zinaweza kutokea. "
+        "Tafadhali andika kwa Kiswahili."
+    ),
+}
+
+
+def tune_model_for_language(requested: str, language: str | None) -> str:
+    """Return the model size we should actually use for this language."""
+    if language in LOW_RESOURCE_LANGUAGES:
+        floor = MIN_MODEL_BY_LANG.get(language, "small")
+        order = ["tiny", "base", "small", "medium", "large-v3"]
+        try:
+            if order.index(requested) < order.index(floor):
+                return floor
+        except ValueError:
+            pass
+    return requested
+
+
+class WhisperEngine:
+    """Wraps Whisper for local transcription."""
 
     def __init__(self, model_size: str = "base"):
-        """
-        model_size: tiny, base, small, medium, large-v3
-        - tiny  : fastest (~4-6 sec/min on i5-4300U)
-        - base  : good balance (~8-12 sec/min)
-        - small : better accuracy, slower (~25-35 sec/min)
-        """
         self.model_size = model_size
         self._model = None
+        self._loaded_size = None
         self._backend = "faster-whisper" if HAS_FASTER else "openai-whisper"
+
+    def _resolve_model_source(self):
+        """Return a path if we have a local model dir, else the model size name."""
+        local = LOCAL_MODEL_DIRS.get(self.model_size)
+        if local and local.exists() and (local / "model.bin").exists():
+            print(f"[Whisper] Using local model at {local}")
+            return str(local)
+        return self.model_size
 
     @property
     def model(self):
-        """Lazy-load the model."""
         if self._model is None:
-            print(f"[Whisper] Loading '{self.model_size}' ({self._backend})...")
+            source = self._resolve_model_source()
+            print(f"[Whisper] Loading '{self.model_size}' from '{source}' ({self._backend})...")
             if HAS_FASTER:
-                # compute_type=int8 is much faster on CPU with minimal quality loss
                 self._model = WhisperModel(
-                    self.model_size,
-                    device="cpu",
-                    compute_type="int8",
+                    source, device="cpu", compute_type="int8",
                 )
             else:
-                self._model = whisper.load_model(self.model_size)  # type: ignore
+                self._model = whisper.load_model(source)  # type: ignore
+            self._loaded_size = self.model_size
         return self._model
 
-    def transcribe(
-        self,
-        audio_path: str,
-        language: str = None,
-        progress_callback=None,
-    ) -> dict:
-        """
-        Transcribe an audio file.
+    def _ensure_model(self, target_size: str):
+        if self._loaded_size != target_size:
+            self._model = None
+            self.model_size = target_size
 
-        Args:
-            audio_path: path to audio
-            language: force a language code (e.g. "en"), or None to auto-detect
-            progress_callback: optional callable(percent: float, info: str)
-
-        Returns:
-            {
-                "text": "full transcript",
-                "language": "en",
-                "segments": [{"start": 0.0, "end": 2.5, "text": "..."}]
-            }
-        """
+    def transcribe(self, audio_path: str, language: str = None,
+                   progress_callback=None) -> dict:
         path = Path(audio_path)
         if not path.exists():
             raise FileNotFoundError(f"Audio not found: {path}")
 
-        print(f"[Whisper] Transcribing {path.name} ({self._backend})...")
+        effective = tune_model_for_language(self.model_size, language)
+        if effective != self.model_size:
+            print(f"[Whisper] Auto-upgrading {self.model_size} -> {effective} for '{language}'")
+            self._ensure_model(effective)
+
+        print(f"[Whisper] Transcribing {path.name} "
+              f"({self._backend}, model={self.model_size}, lang={language or 'auto'})...")
 
         if HAS_FASTER:
             return self._transcribe_faster(path, language, progress_callback)
-        else:
-            return self._transcribe_openai(path, language, progress_callback)
+        return self._transcribe_openai(path, language, progress_callback)
 
-    # ---------- faster-whisper path ----------
-
-    def _transcribe_faster(self, path: Path, language, progress_callback) -> dict:
+    def _transcribe_faster(self, path, language, progress_callback):
+        prompt = INITIAL_PROMPTS.get(language) if language else None
         segments_iter, info = self.model.transcribe(
             str(path),
             language=language,
-            beam_size=1,           # faster; use 5 for better accuracy
-            vad_filter=True,       # skip silence — big speedup
+            initial_prompt=prompt,
+            beam_size=5,
+            vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
+            condition_on_previous_text=True,
+            temperature=0.0,
         )
-
-        # info.duration tells us the total; segments carry their end time
         total_duration = getattr(info, "duration", None) or 0.0
-        detected_lang = getattr(info, "language", "unknown")
-        print(f"[Whisper] Detected language: {detected_lang}")
+        detected = getattr(info, "language", "unknown")
+        print(f"[Whisper] Detected language: {detected}")
 
-        collected_segments = []
-        full_text_parts = []
-
+        collected, parts = [], []
         for seg in segments_iter:
-            collected_segments.append({
-                "start": float(seg.start),
-                "end": float(seg.end),
+            collected.append({
+                "start": float(seg.start), "end": float(seg.end),
                 "text": seg.text.strip(),
             })
-            full_text_parts.append(seg.text)
-
+            parts.append(seg.text)
             if progress_callback and total_duration > 0:
                 pct = min(100.0, (seg.end / total_duration) * 100.0)
-                progress_callback(pct, f"{pct:.0f}%  ({len(collected_segments)} segments)")
+                progress_callback(pct, f"{pct:.0f}%  ({len(collected)} segments)")
 
         if progress_callback:
             progress_callback(100.0, "Done")
 
         return {
-            "text": " ".join(full_text_parts).strip(),
-            "language": detected_lang,
-            "segments": collected_segments,
+            "text": " ".join(parts).strip(),
+            "language": detected,
+            "segments": collected,
         }
 
-    # ---------- openai-whisper fallback ----------
-
-    def _transcribe_openai(self, path: Path, language, progress_callback) -> dict:
+    def _transcribe_openai(self, path, language, progress_callback):
+        prompt = INITIAL_PROMPTS.get(language) if language else None
         if progress_callback:
-            progress_callback(0.0, "Transcribing (no progress info)...")
+            progress_callback(0.0, "Transcribing...")
         result = self.model.transcribe(  # type: ignore
             str(path),
             language=language,
+            initial_prompt=prompt,
             task="transcribe",
+            beam_size=5,
+            condition_on_previous_text=True,
+            temperature=0.0,
             verbose=False,
         )
         if progress_callback:
             progress_callback(100.0, "Done")
-        print(f"[Whisper] Detected language: {result.get('language')}")
         return result

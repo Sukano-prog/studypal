@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from stt import WhisperEngine, Translator, load_audio
+from annotations import AnnotationRepository
+from annotations.detectors import find_silences, build_silence_annotations
 
 
 # Cache lives in ~/.cache/studypal/stt/ (matches v2's TTS cache location)
@@ -23,16 +25,79 @@ def _file_hash(path: Path, chunk_size: int = 65536) -> str:
 class TranscriptionService:
     """Orchestrates transcription and optional translation."""
 
-    def __init__(self, model_size: str = "base"):
+    def __init__(self, model_size: str = "base", source_language: str = None):
         self.model_size = model_size
+        self.source_language = source_language
         self.whisper = WhisperEngine(model_size=model_size)
         self.translator = Translator()
+        self.annotations = AnnotationRepository()
+
+    def _detect_and_store_silences(self, result: dict, audio_hash: str):
+        """Find silence gaps and store them as annotations.
+
+        Runs after transcription. Skips gracefully if no segments
+        or if the transcript is empty.
+        """
+        segments = result.get("segments") or []
+        if not segments:
+            return 0
+
+        # Total duration from last segment's end (approximation)
+        total_duration = max(s.get("end", 0) for s in segments)
+
+        silences = find_silences(
+            segments,
+            total_duration=total_duration,
+            min_duration=1.5,
+        )
+        if not silences:
+            return 0
+
+        # Build a char map from segments so we can anchor silences inline
+        char_map = []
+        char_pos = 0
+        for s in segments:
+            text = s.get("text", "")
+            char_start = char_pos
+            char_end = char_pos + len(text)
+            char_map.append({
+                "start": s.get("start", 0),
+                "end": s.get("end", 0),
+                "char_start": char_start,
+                "char_end": char_end,
+            })
+            char_pos = char_end + 1  # +1 for the space we join with
+
+        annotations = build_silence_annotations(
+            silences,
+            doc_hash=audio_hash,
+            transcript_text=result.get("transcript", ""),
+            char_map=char_map,
+        )
+
+        # Remove old auto-detected silences for this doc, then insert new
+        try:
+            existing = self.annotations.list_for_doc(audio_hash)
+            for a in existing:
+                if a.type.value == "silence" and "auto-detected" in (a.tags or []):
+                    self.annotations.delete(a.id)
+        except Exception as e:
+            print(f"[silence] Could not clear old: {e}")
+
+        for a in annotations:
+            self.annotations.add(a)
+
+        print(f"[silence] Created {len(annotations)} silence annotations")
+        return len(annotations)
 
     # ---------- cache helpers ----------
 
-    def _cache_path(self, audio_hash: str, target_language: str, model_size: str) -> Path:
-        """Cache key = audio hash + target language + model size."""
-        suffix = f"{audio_hash}_{target_language or 'none'}_{model_size}.json"
+    def _cache_path(self, audio_hash: str, source_language: str,
+                    target_language: str, model_size: str) -> Path:
+        """Cache key = audio hash + source lang + target lang + model size."""
+        src = source_language or "auto"
+        tgt = target_language or "none"
+        suffix = f"{audio_hash}_{src}_{tgt}_{model_size}.json"
         return CACHE_DIR / suffix
 
     # ---------- main pipeline ----------
@@ -55,7 +120,9 @@ class TranscriptionService:
         """
         path = load_audio(audio_path)
         audio_hash = _file_hash(path)
-        cache_file = self._cache_path(audio_hash, target_language, self.model_size)
+        cache_file = self._cache_path(
+            audio_hash, self.source_language, target_language, self.model_size,
+        )
 
         # --- Cache hit? ---
         if use_cache and cache_file.exists():
@@ -73,6 +140,7 @@ class TranscriptionService:
         print(f"[STT Cache] MISS: {cache_file.name}")
         result = self.whisper.transcribe(
             str(path),
+            language=self.source_language,
             progress_callback=progress_callback,
         )
 
@@ -99,6 +167,12 @@ class TranscriptionService:
                 )
             except ValueError as e:
                 output["translation"] = f"[Translation unavailable: {e}]"
+
+        # --- Detect silences and store as annotations ---
+        try:
+            self._detect_and_store_silences(result, audio_hash)
+        except Exception as e:
+            print(f"[silence] Detection failed: {e}")
 
         # --- Save to cache ---
         try:
