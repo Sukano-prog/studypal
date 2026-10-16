@@ -6,10 +6,11 @@ from pathlib import Path
 from stt import WhisperEngine, Translator, load_audio
 from annotations import AnnotationRepository
 from annotations.detectors import find_silences, build_silence_annotations
+from utils.paths import get_cache_dir
 
 
-# Cache lives in ~/.cache/studypal/stt/ (matches v2's TTS cache location)
-CACHE_DIR = Path.home() / ".cache" / "studypal" / "stt"
+# STT cache — OS-appropriate via utils.paths
+CACHE_DIR = get_cache_dir() / "stt"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 

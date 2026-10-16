@@ -2,9 +2,11 @@
 import sqlite3
 from pathlib import Path
 
-DB_DIR = Path.home() / ".local" / "share" / "studypal"
+from utils.paths import get_db_path, get_data_dir
+
+DB_DIR = get_data_dir()
 DB_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DB_DIR / "annotations.db"
+DB_PATH = get_db_path()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS annotations (

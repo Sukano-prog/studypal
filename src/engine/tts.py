@@ -10,7 +10,8 @@ import soundfile as sf
 import hashlib
 import platform
 import numpy as np
-import platform
+
+from utils.paths import get_piper_voices_dir, get_cache_dir
 
 class WindowsTTS:
     def __init__(self):
@@ -127,8 +128,8 @@ class TTSGenerator:
     ]
     
     def __init__(self):
-        self.voice_dir = Path.home() / ".local/share/piper"
-        self.cache_dir = Path.home() / ".cache/studypal"
+        self.voice_dir = get_piper_voices_dir()
+        self.cache_dir = get_cache_dir() / "tts"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Detect available voices

@@ -5,6 +5,8 @@ Falls back to openai-whisper if faster-whisper isn't installed.
 """
 from pathlib import Path
 
+from utils.paths import get_models_dir
+
 try:
     from faster_whisper import WhisperModel
     HAS_FASTER = True
@@ -29,7 +31,7 @@ MIN_MODEL_BY_LANG = {
 # Local model directories — checked before HF cache.
 # Populated by the user manually (medium is too big for auto-download).
 LOCAL_MODEL_DIRS = {
-    "medium": Path.home() / ".local" / "share" / "studypal" / "models" / "medium",
+    "medium": get_models_dir() / "medium",
 }
 
 INITIAL_PROMPTS = {
