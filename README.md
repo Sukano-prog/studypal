@@ -143,10 +143,3 @@ default requirements.txt.
 - Music/noise detection planned via YAMNet (TensorFlow).
 - Mobile requires a runtime rewrite (ONNX Runtime for Whisper/Piper).
 
-## License
-
-(Add your license here)
-
-## Contributing
-
-(Add guidelines here)
