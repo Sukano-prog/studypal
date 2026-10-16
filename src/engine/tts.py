@@ -140,6 +140,7 @@ class TTSGenerator:
         
         self.current_voice = self.available_voices[0] if self.available_voices else None
         self.available = len(self.available_voices) > 0
+        self._cancel_requested = False
         
         if not self.available:
             print("WARNING: No Piper models found.")
@@ -194,12 +195,23 @@ class TTSGenerator:
         content = f"{text}|{speed:.2f}|{voice}"
         return hashlib.md5(content.encode()).hexdigest()[:16]
     
+    def cancel(self):
+        """Request generation to stop at the next chunk boundary."""
+        self._cancel_requested = True
+        print("[TTS] Cancel requested")
+
+    def reset_cancel(self):
+        """Clear the cancel flag before starting a fresh generation."""
+        self._cancel_requested = False
+
     def generate(self, text, speed=1.0):
         if not self.available or self.current_voice is None:
             raise Exception("No voice available")
         
         # If text is short, generate directly (one chunk)
         if len(text) <= 3000:
+            if self._cancel_requested:
+                raise RuntimeError("TTS_CANCELLED")
             audio, sr = self._generate_chunk(text, speed)
             duration = len(audio) / sr if sr else 0
             return audio, sr, [{"text": text, "start": 0.0, "end": duration}]
@@ -232,6 +244,9 @@ class TTSGenerator:
         cumulative_samples = 0
         
         for i, chunk in enumerate(chunks):
+            if self._cancel_requested:
+                print(f"[TTS] Cancelled at chunk {i+1}/{len(chunks)}")
+                raise RuntimeError("TTS_CANCELLED")
             print(f"Generating chunk {i+1}/{len(chunks)}...")
             audio, sr = self._generate_chunk(chunk, speed)
             chunk_samples = len(audio)
@@ -343,7 +358,21 @@ class TTSManager:
         else:
             self.tts = TTSGenerator()
             self.available_voices = self.tts.get_voice_list()
-    
+
+    def cancel(self):
+        """Delegate cancel request to the underlying generator."""
+        if hasattr(self.tts, "cancel"):
+            self.tts.cancel()
+
+    def reset_cancel(self):
+        """Clear cancel flag before starting fresh generation."""
+        if hasattr(self.tts, "reset_cancel"):
+            self.tts.reset_cancel()
+
+    @property
+    def _cancel_requested(self):
+        return getattr(self.tts, "_cancel_requested", False)
+
     def get_voice_list(self):
         return self.available_voices
 

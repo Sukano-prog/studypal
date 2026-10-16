@@ -746,7 +746,12 @@ class MainWindow(QMainWindow):
         
         self.play_btn.setEnabled(False)
         self.play_btn.setText("Generating...")
-        self.statusBar().showMessage("Generating speech...")
+        self.statusBar().showMessage("Generating speech... (click Stop to cancel)")
+        # Enable the Stop button NOW so the user can abort generation
+        self.stop_btn.setEnabled(True)
+        self.stop_progress = False
+        if hasattr(self.tts, "reset_cancel"):
+            self.tts.reset_cancel()
         
         def generate_and_play():
             try:
@@ -782,6 +787,18 @@ class MainWindow(QMainWindow):
                 if self.progress_thread is None or not self.progress_thread.is_alive():
                     self._ensure_progress_loop()
                 
+            except RuntimeError as e:
+                if "TTS_CANCELLED" in str(e):
+                    print("[UI] Generation cancelled by user")
+                    self.play_btn.setText("▶ Play")
+                    self.play_btn.setEnabled(True)
+                    self.stop_btn.setEnabled(False)
+                    self.statusBar().showMessage("Cancelled")
+                    return
+                self.play_btn.setText("▶ Play")
+                self.play_btn.setEnabled(True)
+                QMessageBox.critical(self, "Error", str(e))
+                self.statusBar().showMessage("Error")
             except Exception as e:
                 self.play_btn.setText("▶ Play")
                 self.play_btn.setEnabled(True)
@@ -794,6 +811,9 @@ class MainWindow(QMainWindow):
         self.is_playing = False
         self.is_paused = False
         self.stop_progress = True
+        # Also cancel any in-flight TTS generation
+        if hasattr(self.tts, "cancel"):
+            self.tts.cancel()
         self.player.stop()
         self.progress_slider.setValue(0)
         self.progress_slider.setEnabled(False)
