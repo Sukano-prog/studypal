@@ -8,7 +8,8 @@ __pycache__/
 *.exe
 dist/
 build/
-*.spec
+# Note: the canonical studypal.spec IS tracked. Do not add *.spec
+# to this file — it would hide the tracked file from future git operations.
 *.wav
 *.log
 data/cache/
