@@ -32,11 +32,14 @@ jobs:
     - name: Build Linux executable
       run: pyinstaller studypal.spec
 
+    - name: Zip Linux executable
+      run: cd dist && zip -r StudyPal-Linux.zip StudyPal
+
     - name: Upload Linux executable
       uses: actions/upload-artifact@v4
       with:
         name: StudyPal-Linux
-        path: dist/StudyPal
+        path: dist/StudyPal-Linux.zip
 
   build-windows:
     runs-on: windows-latest
@@ -77,5 +80,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        files: artifacts/*
+        files: |
+          artifacts/StudyPal.exe
+          artifacts/StudyPal-Linux.zip
         generate_release_notes: true

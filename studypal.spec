@@ -1,11 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
 
-# Collect ALL PySide6 data, binaries, and hidden imports
+# 1. Collect PySide6 (GUI)
 pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all('PySide6')
+
+# 2. Collect faster-whisper CODE ONLY (no huge models)
+fw_hiddenimports = collect_submodules('faster_whisper')
+ct2_hiddenimports = collect_submodules('ctranslate2')
 
 a = Analysis(
     ['run.py'],
@@ -20,17 +24,16 @@ a = Analysis(
         'numpy',
         'pypdf',
         'docx',
-        # Include ML/TTS dependencies so PyInstaller traces them
         'faster_whisper',
         'ctranslate2',
         'argostranslate',
         'pyttsx3',
-    ] + pyside6_hiddenimports,
+    ] + pyside6_hiddenimports + fw_hiddenimports + ct2_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        # Safely exclude heavy unused Qt modules (do NOT exclude QtNetwork or QtCore)
+        # Exclude massive unused Qt modules to save space
         'PySide6.QtWebEngine',
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineWidgets',
@@ -48,6 +51,12 @@ a = Analysis(
         'PySide6.QtDataVisualization',
         'PySide6.QtQuick',
         'PySide6.QtQml',
+        # Exclude heavy ML stuff we don't use
+        'tensorflow',
+        'torch',
+        'pandas',
+        'matplotlib',
+        'scipy'
     ],
     noarchive=False,
 )
