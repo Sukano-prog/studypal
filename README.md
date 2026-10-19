@@ -67,19 +67,17 @@ Verify:
 
 ### 5. Download Piper voices
 
-Voices go in ~/.local/share/piper/ (Linux/macOS) or
-%LOCALAPPDATA%\piper\ (Windows).
+Voices go in `~/.local/share/piper/` (Linux/macOS) or `%LOCALAPPDATA%\piper\` (Windows).
 
-Get them from: https://huggingface.co/rhasspy/piper-voices
+**Kiswahili Voice (Lanfrica):**
+- [Download Model (.onnx)](https://huggingface.co/rhasspy/piper-voices/resolve/main/sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx?download=true)
+- [Download Config (.json)](https://huggingface.co/rhasspy/piper-voices/resolve/main/sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx.json?download=true)
 
-Each voice needs two files:
-- <voice>.onnx — the model
-- <voice>.onnx.json — the config
-
-Example: en_US-lessac-medium.onnx + en_US-lessac-medium.onnx.json
+**English Voice (Lessac):**
+- [Download Model (.onnx)](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx?download=true)
+- [Download Config (.json)](https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json?download=true)
 
 StudyPal detects installed voices at startup.
-
 ### 6. Run
 
     python run.py
