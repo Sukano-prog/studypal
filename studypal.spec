@@ -1,47 +1,53 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 
-# Collect all PySide6 files
-pyside6_datas = collect_data_files('PySide6')
-pyside6_hidden = collect_submodules('PySide6')
+# Collect ALL PySide6 data, binaries, and hidden imports
+pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all('PySide6')
 
 a = Analysis(
     ['run.py'],
     pathex=[],
-    binaries=[],
+    binaries=pyside6_binaries,
     datas=[
         ('src', 'src'),
     ] + pyside6_datas,
     hiddenimports=[
-        'PySide6',
-        'PySide6.QtCore',
-        'PySide6.QtGui',
-        'PySide6.QtWidgets',
         'sounddevice',
         'soundfile',
         'numpy',
         'pypdf',
         'docx',
-    ] + pyside6_hidden,
+        # Include ML/TTS dependencies so PyInstaller traces them
+        'faster_whisper',
+        'ctranslate2',
+        'argostranslate',
+        'pyttsx3',
+    ] + pyside6_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
-        'PySide6.QtNetwork',
-        'PySide6.QtSql',
-        'PySide6.QtMultimedia',
-        'PySide6.QtSvg',
-        'PySide6.QtXml',
-        'PySide6.QtBluetooth',
-        'PySide6.QtNfc',
-        'PySide6.QtPositioning',
+        # Safely exclude heavy unused Qt modules (do NOT exclude QtNetwork or QtCore)
         'PySide6.QtWebEngine',
         'PySide6.QtWebEngineCore',
         'PySide6.QtWebEngineWidgets',
-        'PySide6.QtWebChannel',
+        'PySide6.QtMultimedia',
+        'PySide6.QtBluetooth',
+        'PySide6.QtNfc',
+        'PySide6.QtPositioning',
+        'PySide6.QtSql',
+        'PySide6.QtTest',
+        'PySide6.QtDesigner',
+        'PySide6.QtHelp',
+        'PySide6.Qt3DCore',
+        'PySide6.Qt3DRender',
+        'PySide6.QtCharts',
+        'PySide6.QtDataVisualization',
+        'PySide6.QtQuick',
+        'PySide6.QtQml',
     ],
     noarchive=False,
 )
