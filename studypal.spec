@@ -37,7 +37,7 @@ a = Analysis(
         'PySide6.QtSql', 'PySide6.QtTest', 'PySide6.QtDesigner', 'PySide6.QtHelp',
         'PySide6.Qt3DCore', 'PySide6.Qt3DRender', 'PySide6.QtCharts', 'PySide6.QtDataVisualization',
         'PySide6.QtQuick', 'PySide6.QtQml',
-        'tensorflow', 'pandas', 'matplotlib', 'scipy'
+        'tensorflow', 'pandas', 'matplotlib', 'scipy', 'nvidia', 'cupy', 'cuda'
     ],
     noarchive=False,
 )
