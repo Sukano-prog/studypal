@@ -26,6 +26,8 @@ soundfile>=0.14.0
 
 # ─── Translation (Argos) ────────────────────────────────
 argostranslate>=1.9.0,<2.0
+torch
+stanza
 
 # ─── Document loading ───────────────────────────────────
 python-docx>=1.2.0,<2.0
