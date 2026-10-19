@@ -98,11 +98,12 @@ Download on first use. Sizes:
 For Kiswahili, the medium model is strongly recommended. StudyPal
 will auto-upgrade base/tiny requests to medium when transcribing Swahili.
 
-To use a locally downloaded medium model, place it at:
+To use a locally downloaded medium model, download these four files and place them in `~/.local/share/studypal/models/medium/` (Linux/macOS) or `%LOCALAPPDATA%\studypal\models\medium\` (Windows):
 
-    ~/.local/share/studypal/models/medium/
-
-with model.bin, config.json, tokenizer.json, vocabulary.txt.
+- [Download model.bin](https://huggingface.co/Systran/faster-whisper-medium/resolve/main/model.bin?download=true)
+- [Download config.json](https://huggingface.co/Systran/faster-whisper-medium/resolve/main/config.json?download=true)
+- [Download tokenizer.json](https://huggingface.co/Systran/faster-whisper-medium/resolve/main/tokenizer.json?download=true)
+- [Download vocabulary.txt](https://huggingface.co/Systran/faster-whisper-medium/resolve/main/vocabulary.txt?download=true)
 
 ### Argos Translate packs
 
