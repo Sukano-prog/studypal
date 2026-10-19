@@ -66,6 +66,30 @@ jobs:
         name: StudyPal-Windows
         path: dist/StudyPal.exe
 
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    - name: Build Windows executable
+      run: pyinstaller studypal.spec
+    - name: Zip Windows Build
+      run: Compress-Archive -Path dist/StudyPal/* -DestinationPath dist/StudyPal-Windows.zip
+    - name: Upload Windows executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: StudyPal-Windows
+        path: dist/StudyPal-Windows.zip
+
   create-release:
     needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
