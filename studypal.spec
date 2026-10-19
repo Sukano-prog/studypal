@@ -27,7 +27,6 @@ a = Analysis(
     ] + pyside6_datas,
     hiddenimports=[
         'sounddevice', 'soundfile', 'numpy', 'pypdf', 'docx', 'pyttsx3',
-        'argostranslate', 'faster_whisper', 'ctranslate2',
     ] + hidden_imports + pyside6_hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -38,7 +37,7 @@ a = Analysis(
         'PySide6.QtSql', 'PySide6.QtTest', 'PySide6.QtDesigner', 'PySide6.QtHelp',
         'PySide6.Qt3DCore', 'PySide6.Qt3DRender', 'PySide6.QtCharts', 'PySide6.QtDataVisualization',
         'PySide6.QtQuick', 'PySide6.QtQml',
-        'tensorflow', 'torch', 'pandas', 'matplotlib', 'scipy'
+        'tensorflow', 'pandas', 'matplotlib', 'scipy'
     ],
     noarchive=False,
 )
