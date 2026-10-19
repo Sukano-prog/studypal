@@ -25,13 +25,13 @@ jobs:
         pip install pyinstaller
     - name: Build Linux executable
       run: pyinstaller studypal.spec
-    - name: Zip Linux Build
-      run: cd dist && zip -r StudyPal-Linux.zip StudyPal
+    - name: Compress Linux Build
+      run: cd dist && tar -czvf StudyPal-Linux.tar.gz StudyPal
     - name: Upload Linux executable
       uses: actions/upload-artifact@v4
       with:
         name: StudyPal-Linux
-        path: dist/StudyPal-Linux.zip
+        path: dist/StudyPal-Linux.tar.gz
 
   build-windows:
     runs-on: windows-latest
@@ -70,6 +70,6 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: |
-          artifacts/StudyPal-Linux.zip
+          artifacts/StudyPal-Linux.tar.gz
           artifacts/StudyPal-Windows.zip
         generate_release_notes: true
