@@ -12,7 +12,16 @@ Advanced study assistant with offline text-to-speech and multilingual transcript
 - Translation — Argos Translate for translating transcripts
 - Cancel anything — abort TTS generation or transcription mid-flight
 
-## Requirements
+## Quick Start (No coding required)
+
+If you just want to use StudyPal, you don't need to install Python or clone this repository!
+
+1. Go to the **[Releases](https://github.com/Sukano-prog/studypal/releases/latest)** page.
+2. Download **`StudyPal.exe`** (for Windows) or **`StudyPal`** (for Linux).
+3. Run the executable.
+   - *Note: Text-to-Speech (TTS) requires the Piper binary (see step 4 below). Speech-to-Text (STT) will download its AI models automatically on first use.*
+
+## Requirements (For running from source)
 
 - Python 3.12 (3.10-3.12 supported; 3.13 not yet tested)
 - Linux / macOS / Windows
