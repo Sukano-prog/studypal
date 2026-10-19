@@ -1,6 +1,6 @@
 # StudyPal
 
-Advanced study assistant with offline text-to-speech and multilingual transcription.
+Advanced study assistant with offline multilingual transcription (Speech-to-Text), natural voice generation (Text-to-Speech), and an integrated annotation system.
 
 ## Features
 
