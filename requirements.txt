@@ -26,7 +26,6 @@ soundfile>=0.14.0
 
 # ─── Translation (Argos) ────────────────────────────────
 argostranslate>=1.9.0,<2.0
-torch
 stanza
 
 # ─── Document loading ───────────────────────────────────
@@ -39,3 +38,4 @@ pywin32>=306; sys_platform == "win32"
 # ─── Optional: openai-whisper (slower, but provides fallback) ───
 # Uncomment if you want the fallback engine. Adds ~3 GB (torch + CUDA libs).
 # openai-whisper>=20250625
+torch --index-url https://download.pytorch.org/whl/cpu
