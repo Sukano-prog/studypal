@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import glob
 
 block_cipher = None
 
@@ -13,7 +14,9 @@ a = Analysis(
     datas=[
         (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
         (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx.json'), 'piper_voices'),
-        (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'argos-translate', 'packages', '*.argosmodel'), 'argos_models'),
+        # Dynamically find Argos models (they can be in different locations)
+        (glob.glob(os.path.join(os.environ.get('LOCALAPPDATA', ''), 'argos-translate', 'packages', '*.argosmodel')), 'argos_models'),
+        (glob.glob(os.path.join(os.path.expanduser('~'), '.local', 'share', 'argos-translate', 'packages', '*.argosmodel')), 'argos_models'),
     ],
     hiddenimports=[],
     hookspath=[],
