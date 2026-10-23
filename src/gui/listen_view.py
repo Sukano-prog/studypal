@@ -6,11 +6,13 @@ from PySide6.QtWidgets import (
     QComboBox, QTextEdit, QFileDialog, QProgressBar, QSplitter,
     QMessageBox, QGroupBox, QApplication
 )
+from PySide6.QtGui import QTextCursor
 from PySide6.QtCore import Qt
 
 from services.transcription_service import TranscriptionService
 from gui.listen_worker import ListenWorker
 from annotations import Annotation, AnnotationType, AnnotationRepository
+from gui.annotation_panel import AnnotationPanel
 
 
 # Human-readable names and flags for every language we support
@@ -45,6 +47,8 @@ class ListenView(QWidget):
         self._annotations = AnnotationRepository()
 
         self._build_ui()
+
+
 
     # ---------- language dropdown ----------
 
@@ -206,7 +210,20 @@ class ListenView(QWidget):
         self.transcript_view.customContextMenuRequested.connect(
             self._on_transcript_context_menu
         )
-        t_layout.addWidget(self.transcript_view)
+
+        # Split: transcript on left, annotation panel on right
+        self._main_splitter = QSplitter(Qt.Horizontal)
+        self._main_splitter.addWidget(self.transcript_view)
+
+        self._annotation_panel = AnnotationPanel(self)
+        self._annotation_panel.set_repo(self._annotations)
+        self._annotation_panel.annotation_clicked.connect(self._jump_to_annotation)
+        self._main_splitter.addWidget(self._annotation_panel)
+
+        # Give transcript ~75% of the width
+        self._main_splitter.setSizes([600, 200])
+
+        t_layout.addWidget(self._main_splitter)
         results_splitter.addWidget(t_box)
 
         tr_box = QGroupBox("🌍 Translation")
@@ -338,6 +355,10 @@ class ListenView(QWidget):
         # Overlay any existing annotations for this file
         self._render_annotations()
 
+        # Refresh the sidebar panel with current annotations
+        if hasattr(self, "_annotation_panel"):
+            self._annotation_panel.load_doc(self._current_doc_hash)
+
         if result.get("translation"):
             self.translation_view.setPlainText(result["translation"])
         else:
@@ -375,6 +396,19 @@ class ListenView(QWidget):
             print(f"[ann] Could not hash audio: {e}")
             return None
         return self._current_doc_hash
+
+    def _jump_to_annotation(self, char_start: int, char_end: int):
+        """Move transcript cursor to the annotation's char position."""
+        doc = self.transcript_view.document()
+        text_len = len(doc.toPlainText())
+        cs = max(0, min(char_start, text_len))
+        ce = max(cs, min(char_end, text_len))
+
+        cursor = QTextCursor(doc)
+        cursor.setPosition(cs)
+        cursor.setPosition(ce, QTextCursor.KeepAnchor)
+        self.transcript_view.setTextCursor(cursor)
+        self.transcript_view.setFocus()
 
     def _on_transcript_context_menu(self, pos):
         if not self._current_result:
@@ -456,6 +490,8 @@ class ListenView(QWidget):
             f"Added {ann_type.value} on line {line_no}"
         )
         self._render_annotations()
+        if hasattr(self, "_annotation_panel"):
+            self._annotation_panel.refresh()
 
     def _render_annotations(self):
         """Highlight all annotations for the current doc inside transcript_view."""

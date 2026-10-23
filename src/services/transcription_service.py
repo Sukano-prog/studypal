@@ -49,7 +49,7 @@ class TranscriptionService:
         silences = find_silences(
             segments,
             total_duration=total_duration,
-            min_duration=1.5,
+            min_duration=0.9,
         )
         if not silences:
             return 0

@@ -1,6 +1,6 @@
 """Translation via Argos Translate (offline, CPU)."""
 import os
-# Force MiniSBD sentence splitter — Stanza does not support Swahili
+# Force MiniSBD sentence splitter ΓÇö Stanza does not support Swahili
 os.environ.setdefault("ARGOS_CHUNK_TYPE", "MINISBD")
 
 # Windows stanza lacks a capital-P Pipeline attribute (Argos calls it).

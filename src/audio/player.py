@@ -1,4 +1,4 @@
-"""Audio player — Windows winsound backend to avoid VM audio deadlocks.
+"""Audio player ΓÇö Windows winsound backend to avoid VM audio deadlocks.
 
 sounddevice (PortAudio) and simpleaudio both hang in this VirtualBox VM
 when starting playback. winsound is a native Windows API that plays WAV
