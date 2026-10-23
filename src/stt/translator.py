@@ -1,37 +1,43 @@
-import sys
-import types
-import re
+"""Translation via Argos Translate (offline, CPU)."""
+import os
+# Force MiniSBD sentence splitter — Stanza does not support Swahili
+os.environ.setdefault("ARGOS_CHUNK_TYPE", "MINISBD")
 
-# 1. Create a completely fake, harmless 'stanza' module
-fake_stanza = types.ModuleType('stanza')
-fake_stanza.__path__ = [] # Make it look like a package
-sys.modules['stanza'] = fake_stanza
-
-# 2. Create a fake 'stanza.pipeline'
-fake_pipeline = types.ModuleType('stanza.pipeline')
-fake_stanza.pipeline = fake_pipeline
-sys.modules['stanza.pipeline'] = fake_pipeline
-
-# 3. Intercept the real argostranslate import
+# Windows stanza lacks a capital-P Pipeline attribute (Argos calls it).
+# Add alias BEFORE argostranslate imports so sbd.py sees it.
 try:
-    import argostranslate.translate
-    import argostranslate.package
-except Exception as e:
-    # If argostranslate tries to import stanza.something_else, fail gracefully
+    import stanza
+    if not hasattr(stanza, "Pipeline") and hasattr(stanza, "pipeline"):
+        stanza.Pipeline = stanza.pipeline
+except ImportError:
     pass
+
+import argostranslate.translate
+
 
 class Translator:
     def __init__(self):
         pass
 
     def available_languages(self):
-        # Because we stubbed out stanza, argostranslate can't scan the disk.
-        # We return the list of languages you have actually downloaded in:
-        # ~/.local/share/argostranslate/packages/
-        return ['ar', 'de', 'en', 'es', 'fr', 'hi', 'pt', 'sw', 'zh']
+        """Return list of installed language codes."""
+        langs = argostranslate.translate.get_installed_languages()
+        return sorted({lang.code for lang in langs})
 
     def translate(self, text, from_code="en", to_code="sw"):
-        try:
-            return argostranslate.translate.translate(text, from_code, to_code)
-        except Exception as e:
-            raise ValueError(f"Translation failed: {e}")
+        """Translate text using the language-object Argos API."""
+        if not text or from_code == to_code:
+            return text
+
+        installed = argostranslate.translate.get_installed_languages()
+        from_lang = next((l for l in installed if l.code == from_code), None)
+        to_lang = next((l for l in installed if l.code == to_code), None)
+
+        if not from_lang or not to_lang:
+            raise ValueError(f"Language not installed: {from_code} -> {to_code}")
+
+        translation = from_lang.get_translation(to_lang)
+        if translation is None:
+            raise ValueError(f"No translation path: {from_code} -> {to_code}")
+
+        return translation.translate(text)
