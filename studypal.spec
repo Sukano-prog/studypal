@@ -1,23 +1,32 @@
 # -*- mode: python ; coding: utf-8 -*-
-
 import os
 import glob
+import argostranslate.package
 
 block_cipher = None
-
-import argostranslate.package
 
 # Ask Argos where it actually saved the packages
 argos_paths = []
 try:
     argos_dir = argostranslate.package.get_package_directory()
-      datas=dynamic_datas,
-join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
-        (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx.json'), 'piper_voices'),
-        # Dynamically find Argos models (they can be in different locations)
-        (glob.glob(os.path.join(os.environ.get('LOCALAPPDATA', ''), 'argos-translate', 'packages', '*.argosmodel')), 'argos_models'),
-        (glob.glob(os.path.join(os.path.expanduser('~'), '.local', 'share', 'argos-translate', 'packages', '*.argosmodel')), 'argos_models'),
+    # PyInstaller needs a glob pattern to find files inside the directory
+    argos_paths = [(os.path.join(argos_dir, '*.argosmodel'), 'argos_models')]
+except Exception as e:
+    print(f"Could not find argos packages: {e}")
+
+# Build the final datas list
+dynamic_datas = [
+    (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
+    (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx.json'), 'piper_voices'),
+] + argos_paths
+
+a = Analysis(
+    ['run.py'],
+    pathex=['src'],
+    binaries=[
+        (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'piper', '*'), 'piper'),
     ],
+    datas=dynamic_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
