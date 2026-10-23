@@ -132,6 +132,21 @@ class TTSGenerator:
     
     def __init__(self):
         self.voice_dir = get_piper_voices_dir()
+
+        # Resolve the piper executable path
+        # Windows: absolute path to %LOCALAPPDATA%\Programs\piper\piper.exe
+        # Linux/macOS: find "piper" in PATH via shutil.which
+        import sys as _sys
+        if _sys.platform == "win32":
+            import os as _os
+            self._piper_exe = str(
+                Path(_os.environ.get("LOCALAPPDATA", ""))
+                / "Programs" / "piper" / "piper.exe"
+            )
+        else:
+            import shutil as _shutil
+            self._piper_exe = _shutil.which("piper") or "piper"
+
         self.cache_dir = get_cache_dir() / "tts"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
@@ -290,7 +305,7 @@ class TTSGenerator:
             length_scale = 1.0 / speed
             
             cmd = [
-                "piper",
+                self._piper_exe,
                 "--model", str(self.voice_dir / voice_info["file"]),
                 "--length_scale", str(length_scale),
                 "--output_file", output_file
@@ -356,12 +371,21 @@ class TTSGenerator:
 
 class TTSManager:
     def __init__(self):
-        if platform.system() == "Windows":
+        # Try Piper first — it works on both platforms if voices are installed
+        try:
+            candidate = TTSGenerator()
+            voices = candidate.get_voice_list()
+            if voices:
+                self.tts = candidate
+                self.available_voices = voices
+            else:
+                print("[TTS] Piper has no voices; falling back to WindowsTTS")
+                self.tts = WindowsTTS()
+                self.available_voices = ["Windows TTS"]
+        except Exception as e:
+            print(f"[TTS] Piper unavailable ({e}); falling back to WindowsTTS")
             self.tts = WindowsTTS()
             self.available_voices = ["Windows TTS"]
-        else:
-            self.tts = TTSGenerator()
-            self.available_voices = self.tts.get_voice_list()
 
     def cancel(self):
         """Delegate cancel request to the underlying generator."""
