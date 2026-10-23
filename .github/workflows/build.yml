@@ -65,7 +65,18 @@ jobs:
       run: pip install argostranslate
     
     - name: Download Argos models
-      run: python -m argostranslate.package update && python -c "import argostranslate.package; argostranslate.package.install_from_path(next(p for p in argostranslate.package.get_available_packages() if p.from_code=='sw' and p.to_code=='en').download()) && python -c "import argostranslate.package; argostranslate.package.install_from_path(next(p for p in argostranslate.package.get_available_packages() if p.from_code=='en' and p.to_code=='sw').download())"
+      shell: pwsh
+      run: |
+        python -m argostranslate.package update
+        @'
+        import argostranslate.package
+        avail = argostranslate.package.get_available_packages()
+        for pair in [("sw", "en"), ("en", "sw")]:
+            p = next((x for x in avail if x.from_code == pair[0] and x.to_code == pair[1]), None)
+            if p:
+                print(f"Installing {pair[0]} -> {pair[1]}...")
+                argostranslate.package.install_from_path(p.download())
+        '@ | python -
     
     - name: Build with PyInstaller
       run: pyinstaller studypal.spec --clean
