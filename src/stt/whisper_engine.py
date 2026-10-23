@@ -81,6 +81,7 @@ class WhisperEngine:
             if HAS_FASTER:
                 self._model = WhisperModel(
                     source, device="cpu", compute_type="int8",
+                    local_files_only=(source == self.model_size),
                 )
             else:
                 self._model = whisper.load_model(source)  # type: ignore

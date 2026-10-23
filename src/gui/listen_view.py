@@ -274,7 +274,13 @@ class ListenView(QWidget):
     # ---------- transcription ----------
 
     def start_transcription(self):
+        if getattr(self, '_is_transcribing', False):
+            print("[STT] Transcription already in progress, ignoring click.")
+            return
+        self._is_transcribing = True
+        
         if not self._current_audio_path:
+            self._is_transcribing = False
             return
 
         self.transcript_view.clear()
@@ -327,10 +333,13 @@ class ListenView(QWidget):
         self.progress.setValue(pct)
 
     def _on_finished(self, result: dict):
+        self._is_transcribing = False
         # Refresh target-language dropdown using the detected source language
         detected = result.get("detected_language")
         if detected:
+            self.lang_combo.blockSignals(True)
             self._populate_language_dropdown(source_lang=detected)
+            self.lang_combo.blockSignals(False)
 
         self.progress.setValue(100)
         self.transcribe_btn.setEnabled(True)
@@ -529,6 +538,7 @@ class ListenView(QWidget):
             self.transcript_view.blockSignals(False)
 
     def _on_error(self, msg: str):
+        self._is_transcribing = False
         self.progress.setVisible(False)
         self.status_label.setText(f"Error: {msg}")
         self.transcribe_btn.setEnabled(True)

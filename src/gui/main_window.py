@@ -38,6 +38,10 @@ class ClickableSlider(QSlider):
 
 
 class MainWindow(QMainWindow):
+    _tts_playing = Signal()
+    _tts_cancelled = Signal()
+    _tts_error = Signal(str)
+
     def __init__(self):
         super().__init__()
         
@@ -69,6 +73,9 @@ class MainWindow(QMainWindow):
         
         # Setup UI
         self.setup_ui()
+        self._tts_playing.connect(self._on_tts_playing)
+        self._tts_cancelled.connect(self._on_tts_cancelled)
+        self._tts_error.connect(self._on_tts_error)
         self.apply_theme()
     
     def setup_ui(self):
@@ -720,6 +727,32 @@ class MainWindow(QMainWindow):
                 self._ensure_progress_loop()
             self.statusBar().showMessage("Resumed")
     
+    def _on_tts_playing(self):
+        self.play_btn.setText("⏸ Pause")
+        self.play_btn.setEnabled(True)
+        self.stop_btn.setEnabled(True)
+        self.save_audio_btn.setEnabled(True)
+        self.progress_slider.setEnabled(True)
+        if self.audio_data is not None and self.sample_rate:
+            self.duration_label.setText(self.format_time(len(self.audio_data) / self.sample_rate))
+        self.statusBar().showMessage("Playing...")
+        self.stop_progress = False
+        if self.progress_thread is None or not self.progress_thread.is_alive():
+            self._ensure_progress_loop()
+
+    def _on_tts_cancelled(self):
+        print("[UI] Generation cancelled by user")
+        self.play_btn.setText("▶ Play")
+        self.play_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.statusBar().showMessage("Cancelled")
+
+    def _on_tts_error(self, msg):
+        self.play_btn.setText("▶ Play")
+        self.play_btn.setEnabled(True)
+        QMessageBox.critical(self, "Error", msg)
+        self.statusBar().showMessage("Error")
+
     def play_text(self):
         text = self.text_display.toPlainText().strip()
         if not text:
@@ -777,34 +810,17 @@ class MainWindow(QMainWindow):
                 self.is_paused = False
                 self.progress_slider.setEnabled(True)
                 
-                self.play_btn.setText("⏸ Pause")
-                self.play_btn.setEnabled(True)
-                self.stop_btn.setEnabled(True)
-                self.save_audio_btn.setEnabled(True)
-                self.statusBar().showMessage("Playing...")
-                
-                self.stop_progress = False
-                if self.progress_thread is None or not self.progress_thread.is_alive():
-                    self._ensure_progress_loop()
+                # Worker thread: emit signal, main thread updates UI
+                self._tts_playing.emit()
                 
             except RuntimeError as e:
                 if "TTS_CANCELLED" in str(e):
-                    print("[UI] Generation cancelled by user")
-                    self.play_btn.setText("▶ Play")
-                    self.play_btn.setEnabled(True)
-                    self.stop_btn.setEnabled(False)
-                    self.statusBar().showMessage("Cancelled")
+                    self._tts_cancelled.emit()
                     return
-                self.play_btn.setText("▶ Play")
-                self.play_btn.setEnabled(True)
-                QMessageBox.critical(self, "Error", str(e))
-                self.statusBar().showMessage("Error")
+                self._tts_error.emit(str(e))
             except Exception as e:
-                self.play_btn.setText("▶ Play")
-                self.play_btn.setEnabled(True)
-                QMessageBox.critical(self, "Error", str(e))
-                self.statusBar().showMessage("Error")
-        
+                self._tts_error.emit(str(e))
+
         threading.Thread(target=generate_and_play, daemon=True).start()
     
     def stop_playback(self):
