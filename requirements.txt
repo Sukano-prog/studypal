@@ -39,3 +39,4 @@ pywin32>=306; sys_platform == "win32"
 # Uncomment if you want the fallback engine. Adds ~3 GB (torch + CUDA libs).
 # openai-whisper>=20250625
 torch --index-url https://download.pytorch.org/whl/cpu
+av<19  # Pin below 19 — faster-whisper 1.2.1 uses metadata_errors kwarg
