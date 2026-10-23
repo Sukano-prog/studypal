@@ -122,9 +122,13 @@ class TTSGenerator:
     # Only these voices appear in the UI dropdown.
     # All others stay registered + cached on disk — just add them back here to re-enable.
     SHOW_IN_DROPDOWN = [
+        # --- English ---
         "🇬🇧 Sarah (English F)",
         "🇬🇧 Michael (English M)",
         "👶 Amy (Kid-friendly English F)",
+        "🇬🇧 Sarah Light (English F)",
+        # --- Swahili ---
+        "🇰🇪 Lanfrica (Swahili F)",
     ]
     
     def __init__(self):
