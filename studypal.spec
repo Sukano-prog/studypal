@@ -5,14 +5,14 @@ import glob
 
 block_cipher = None
 
-a = Analysis(
-    ['run.py'],
-    pathex=['src'],
-    binaries=[
-        (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'piper', '*'), 'piper'),
-    ],
-    datas=[
-        (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
+import argostranslate.package
+
+# Ask Argos where it actually saved the packages
+argos_paths = []
+try:
+    argos_dir = argostranslate.package.get_package_directory()
+      datas=dynamic_datas,
+join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
         (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx.json'), 'piper_voices'),
         # Dynamically find Argos models (they can be in different locations)
         (glob.glob(os.path.join(os.environ.get('LOCALAPPDATA', ''), 'argos-translate', 'packages', '*.argosmodel')), 'argos_models'),
