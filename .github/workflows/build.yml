@@ -38,7 +38,6 @@ jobs:
         } else {
           Copy-Item "piper_extracted\*" $dst -Recurse -Force
         }
-        Get-ChildItem $dst | Select-Object Name
     
     - name: Download Piper voices
       run: |
@@ -59,33 +58,20 @@ jobs:
         )
         foreach ($v in $voices) {
           $name = Split-Path $v -Leaf
-          Write-Host "Downloading $name..."
           Invoke-WebRequest -Uri "$base/$v" -OutFile "$voiceDir\$name"
         }
-        Get-ChildItem $voiceDir | Measure-Object | Select-Object Count
+    
+    - name: Install Argos Translate
+      run: pip install argostranslate
     
     - name: Download Argos models
-      run: |
-        $argosDir = "$env:LOCALAPPDATA\argos-translate\packages"
-        New-Item -ItemType Directory -Path $argosDir -Force | Out-Null
-        python -c "
-import argostranslate.package
-argostranslate.package.update_package_index()
-avail = argostranslate.package.get_available_packages()
-for pair in [('sw','en'),('en','sw')]:
-    p = next((x for x in avail if x.from_code==pair[0] and x.to_code==pair[1]), None)
-    if p:
-        print(f'Installing {pair[0]} -> {pair[1]}...')
-        argostranslate.package.install_from_path(p.download())
-"
+      run: python -m argostranslate.package update && python -c "import argostranslate.package; argostranslate.package.install_from_path(next(p for p in argostranslate.package.get_available_packages() if p.from_code=='sw' and p.to_code=='en').download()) && python -c "import argostranslate.package; argostranslate.package.install_from_path(next(p for p in argostranslate.package.get_available_packages() if p.from_code=='en' and p.to_code=='sw').download())"
     
     - name: Build with PyInstaller
       run: pyinstaller studypal.spec --clean
     
     - name: Zip the build
-      run: |
-        Compress-Archive -Path dist\StudyPal\* -DestinationPath StudyPal-Windows.zip
-        Get-Item StudyPal-Windows.zip | Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,1)}}
+      run: Compress-Archive -Path dist\StudyPal\* -DestinationPath StudyPal-Windows.zip
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
