@@ -19,6 +19,7 @@ Piper voices:
 import os
 import platform
 from pathlib import Path
+import sys
 
 
 def _is_windows() -> bool:
@@ -67,8 +68,21 @@ def get_cache_dir() -> Path:
     return _linux_cache_home() / "studypal"
 
 
+def _is_frozen() -> bool:
+    """True when running as a PyInstaller-bundled .exe."""
+    return getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+
+
+def _meipass() -> Path:
+    """PyInstaller temp dir where bundled files live."""
+    return Path(sys._MEIPASS)
+
+
 def get_piper_voices_dir() -> Path:
     """Directory containing Piper voice .onnx files."""
+    # If bundled .exe, voices are inside PyInstaller's temp dir
+    if _is_frozen():
+        return _meipass() / "piper_voices"
     override = os.environ.get("STUDYPAL_PIPER_DIR")
     if override:
         return Path(override).expanduser()

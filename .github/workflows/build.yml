@@ -1,4 +1,4 @@
-name: Build StudyPal
+﻿name: Build StudyPal
 
 on:
   push:
@@ -14,37 +14,89 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
+    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
+    
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install "av<19"
         pip install pyinstaller
-    - name: Build Windows executable
-      run: pyinstaller studypal.spec
-    - name: Zip Windows Build
-      run: Compress-Archive -Path dist/StudyPal/* -DestinationPath dist/StudyPal-Windows.zip
-    - name: Upload Windows executable
+    
+    - name: Download Piper binary
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip" -OutFile piper.zip
+        Expand-Archive piper.zip -DestinationPath piper_extracted
+        $dst = "$env:LOCALAPPDATA\Programs\piper"
+        New-Item -ItemType Directory -Path $dst -Force | Out-Null
+        if (Test-Path "piper_extracted\piper\piper.exe") {
+          Copy-Item "piper_extracted\piper\*" $dst -Recurse -Force
+        } else {
+          Copy-Item "piper_extracted\*" $dst -Recurse -Force
+        }
+        Get-ChildItem $dst | Select-Object Name
+    
+    - name: Download Piper voices
+      run: |
+        $voiceDir = "$env:LOCALAPPDATA\piper"
+        New-Item -ItemType Directory -Path $voiceDir -Force | Out-Null
+        $base = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+        $voices = @(
+          "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+          "en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+          "en/en_US/ryan/medium/en_US-ryan-medium.onnx",
+          "en/en_US/ryan/medium/en_US-ryan-medium.onnx.json",
+          "en/en_US/amy/low/en_US-amy-low.onnx",
+          "en/en_US/amy/low/en_US-amy-low.onnx.json",
+          "en/en_US/lessac/low/en_US-lessac-low.onnx",
+          "en/en_US/lessac/low/en_US-lessac-low.onnx.json",
+          "sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx",
+          "sw/sw_CD/lanfrica/medium/sw_CD-lanfrica-medium.onnx.json"
+        )
+        foreach ($v in $voices) {
+          $name = Split-Path $v -Leaf
+          Write-Host "Downloading $name..."
+          Invoke-WebRequest -Uri "$base/$v" -OutFile "$voiceDir\$name"
+        }
+        Get-ChildItem $voiceDir | Measure-Object | Select-Object Count
+    
+    - name: Download Argos models
+      run: |
+        $argosDir = "$env:LOCALAPPDATA\argos-translate\packages"
+        New-Item -ItemType Directory -Path $argosDir -Force | Out-Null
+        python -c "
+import argostranslate.package
+argostranslate.package.update_package_index()
+avail = argostranslate.package.get_available_packages()
+for pair in [('sw','en'),('en','sw')]:
+    p = next((x for x in avail if x.from_code==pair[0] and x.to_code==pair[1]), None)
+    if p:
+        print(f'Installing {pair[0]} -> {pair[1]}...')
+        argostranslate.package.install_from_path(p.download())
+"
+    
+    - name: Build with PyInstaller
+      run: pyinstaller studypal.spec --clean
+    
+    - name: Zip the build
+      run: |
+        Compress-Archive -Path dist\StudyPal\* -DestinationPath StudyPal-Windows.zip
+        Get-Item StudyPal-Windows.zip | Select-Object Name, @{N='MB';E={[math]::Round($_.Length/1MB,1)}}
+    
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: StudyPal-Windows
-        path: dist/StudyPal-Windows.zip
-
-  create-release:
-    needs: [build-windows]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-        merge-multiple: true
-    - name: Create Release
+        path: StudyPal-Windows.zip
+        retention-days: 30
+    
+    - name: Upload to Release
+      if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
       with:
-        files: artifacts/StudyPal-Windows.zip
+        files: StudyPal-Windows.zip
         generate_release_notes: true

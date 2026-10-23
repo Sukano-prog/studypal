@@ -137,7 +137,11 @@ class TTSGenerator:
         # Windows: absolute path to %LOCALAPPDATA%\Programs\piper\piper.exe
         # Linux/macOS: find "piper" in PATH via shutil.which
         import sys as _sys
-        if _sys.platform == "win32":
+        if getattr(_sys, "frozen", False) and hasattr(_sys, "_MEIPASS"):
+            # Bundled .exe: piper.exe is inside PyInstaller's temp dir
+            _suffix = "piper.exe" if _sys.platform == "win32" else "piper"
+            self._piper_exe = str(Path(_sys._MEIPASS) / "piper" / _suffix)
+        elif _sys.platform == "win32":
             import os as _os
             self._piper_exe = str(
                 Path(_os.environ.get("LOCALAPPDATA", ""))

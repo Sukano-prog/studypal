@@ -788,6 +788,9 @@ class MainWindow(QMainWindow):
         
         def generate_and_play():
             try:
+                # IMMEDIATELY tell UI we are playing so buttons work
+                self._tts_playing.emit()
+                
                 speed = self.speed_slider.value() / 100.0
                 self.current_speed = speed
                 result = self.tts.generate_audio(text, speed)
@@ -810,8 +813,8 @@ class MainWindow(QMainWindow):
                 self.is_paused = False
                 self.progress_slider.setEnabled(True)
                 
-                # Worker thread: emit signal, main thread updates UI
-                self._tts_playing.emit()
+                # Audio is loaded and player.play() was called
+                pass
                 
             except RuntimeError as e:
                 if "TTS_CANCELLED" in str(e):
