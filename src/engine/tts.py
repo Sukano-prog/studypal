@@ -127,8 +127,7 @@ class TTSGenerator:
         "🇬🇧 Michael (English M)",
         "👶 Amy (Kid-friendly English F)",
         "🇬🇧 Sarah Light (English F)",
-        # --- Swahili ---
-        "🇰🇪 Lanfrica (Swahili F)",
+        # Swahili intentionally hidden — voice file remains on disk for later use
     ]
     
     def __init__(self):
