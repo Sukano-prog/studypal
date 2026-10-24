@@ -18,6 +18,7 @@ except Exception as e:
 dynamic_datas = [
     (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx'), 'piper_voices'),
     (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'piper', '*.onnx.json'), 'piper_voices'),
+    (os.path.join(os.environ.get('LOCALAPPDATA', ''), 'studypal', 'models', 'medium', '*'), 'whisper_models/medium'),
 ] + argos_paths
 
 a = Analysis(

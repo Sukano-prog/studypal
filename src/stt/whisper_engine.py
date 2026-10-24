@@ -57,10 +57,34 @@ def tune_model_for_language(requested: str, language: str | None) -> str:
 
 
 class WhisperEngine:
+
+    def _setup_bundled_model(self):
+        """If running as a bundled .exe, copy the model to AppData for local loading."""
+        import sys, os, shutil
+        from pathlib import Path
+
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            bundled_dir = Path(sys._MEIPASS) / "whisper_models" / "medium"
+            local_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "studypal" / "models" / "medium"
+
+            # If the model is in the .exe but not on the user's disk yet, copy it
+            if bundled_dir.exists() and not (local_dir / "model.bin").exists():
+                print("[Whisper] First launch: copying bundled model to AppData...")
+                local_dir.mkdir(parents=True, exist_ok=True)
+                for f in bundled_dir.iterdir():
+                    shutil.copy(f, local_dir / f.name)
+                print("[Whisper] Copy complete.")
+
+            # Tell faster-whisper to use the AppData path
+            if (local_dir / "model.bin").exists():
+                self.model_size = str(local_dir)
+
+
     """Wraps Whisper for local transcription."""
 
     def __init__(self, model_size: str = "base"):
         self.model_size = model_size
+        self._setup_bundled_model()
         self._model = None
         self._loaded_size = None
         self._backend = "faster-whisper" if HAS_FASTER else "openai-whisper"

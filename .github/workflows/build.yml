@@ -78,6 +78,16 @@ jobs:
                 argostranslate.package.install_from_path(p.download())
         '@ | python -
     
+    - name: Download Whisper Medium Model
+      run: |
+        $modelDir = "$env:LOCALAPPDATA\studypal\models\medium"
+        New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
+        $base = "https://huggingface.co/Systran/faster-whisper-medium/resolve/main"
+        $files = @("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
+        foreach ($f in $files) {
+          Invoke-WebRequest -Uri "$base/$f" -OutFile "$modelDir\$f"
+        }
+
     - name: Build with PyInstaller
       run: pyinstaller studypal.spec --clean
     

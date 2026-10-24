@@ -127,13 +127,18 @@ class AudioPlayer:
             audio_int16 = (np.clip(audio_float32, -1.0, 1.0) * 32767).astype(np.int16)
             sf.write(self._temp_wav, audio_int16, self.sample_rate, subtype='PCM_16')
             
-            # Use subprocess to play, so Python doesn't block on the audio driver
+            # Blocking subprocess, completely hidden window
             import subprocess
             ps_cmd = f'(New-Object Media.SoundPlayer "{self._temp_wav}").PlaySync()'
-            self._play_process = subprocess.Popen(
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+            subprocess.run(
                 ["powershell", "-WindowStyle", "Hidden", "-Command", ps_cmd],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                startupinfo=startupinfo
             )
         else:
             sd.play(audio_float32, int(self.sample_rate * self.speed))
